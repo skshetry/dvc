@@ -1,11 +1,11 @@
-from dvc.stage import PipelineStage
+from dvc.stage.run import PipelineRunStage
 from dvc.dvcfile import Lockfile, LockfileCorruptedError
 import yaml
 import pytest
 
 
 def test_stage_dump_no_outs_deps(tmp_dir, dvc):
-    stage = PipelineStage(name="s1", repo=dvc, path="path", cmd="command")
+    stage = PipelineRunStage(name="s1", repo=dvc, path="path", cmd="command")
     lockfile = Lockfile(dvc, "path.lock")
     lockfile.dump(stage)
     assert lockfile.load() == {"s1": {"cmd": "command"}}
@@ -15,7 +15,7 @@ def test_stage_dump_when_already_exists(tmp_dir, dvc):
     data = {"s1": {"cmd": "command", "deps": [], "outs": []}}
     with open("path.lock", "w+") as f:
         yaml.dump(data, f)
-    stage = PipelineStage(name="s2", repo=dvc, path="path", cmd="command2")
+    stage = PipelineRunStage(name="s2", repo=dvc, path="path", cmd="command2")
     lockfile = Lockfile(dvc, "path.lock")
     lockfile.dump(stage)
     assert lockfile.load() == {
@@ -36,7 +36,7 @@ def test_stage_dump_with_deps_and_outs(tmp_dir, dvc):
         yaml.dump(data, f)
 
     lockfile = Lockfile(dvc, "path.lock")
-    stage = PipelineStage(name="s2", repo=dvc, path="path", cmd="command2")
+    stage = PipelineRunStage(name="s2", repo=dvc, path="path", cmd="command2")
     lockfile.dump(stage)
     assert lockfile.load() == {
         **data,
@@ -46,9 +46,9 @@ def test_stage_dump_with_deps_and_outs(tmp_dir, dvc):
 
 def test_stage_overwrites_if_already_exists(tmp_dir, dvc):
     lockfile = Lockfile(dvc, "path.lock",)
-    stage = PipelineStage(name="s2", repo=dvc, path="path", cmd="command2")
+    stage = PipelineRunStage(name="s2", repo=dvc, path="path", cmd="command2")
     lockfile.dump(stage)
-    stage = PipelineStage(name="s2", repo=dvc, path="path", cmd="command3")
+    stage = PipelineRunStage(name="s2", repo=dvc, path="path", cmd="command3")
     lockfile.dump(stage)
     assert lockfile.load() == {
         "s2": {"cmd": "command3"},

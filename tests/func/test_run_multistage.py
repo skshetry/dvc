@@ -7,34 +7,35 @@ from dvc.stage.exceptions import InvalidStageName, DuplicateStageName
 
 
 def test_run_with_name(tmp_dir, dvc, run_copy):
-    from dvc.stage import PipelineStage
+    from dvc.stage.run import PipelineRunStage
     from dvc.dvcfile import PIPELINE_FILE, PIPELINE_LOCK
 
     tmp_dir.dvc_gen("foo", "foo")
     assert not os.path.exists(PIPELINE_FILE)
     stage = run_copy("foo", "bar", name="copy-foo-to-bar")
-    assert isinstance(stage, PipelineStage)
+    assert isinstance(stage, PipelineRunStage)
     assert stage.name == "copy-foo-to-bar"
     assert os.path.exists(PIPELINE_FILE)
     assert os.path.exists(PIPELINE_LOCK)
 
 
 def test_run_with_multistage_and_single_stage(tmp_dir, dvc, run_copy):
-    from dvc.stage import PipelineStage, Stage
+    from dvc.stage import Stage
+    from dvc.stage.run import PipelineRunStage
 
     tmp_dir.dvc_gen("foo", "foo")
     stage1 = run_copy("foo", "foo1", single_stage=True)
     stage2 = run_copy("foo1", "foo2", name="copy-foo1-foo2")
     stage3 = run_copy("foo2", "foo3", single_stage=True)
 
-    assert isinstance(stage2, PipelineStage)
+    assert isinstance(stage2, PipelineRunStage)
     assert isinstance(stage1, Stage)
     assert isinstance(stage3, Stage)
     assert stage2.name == "copy-foo1-foo2"
 
 
 def test_run_multi_stage_repeat(tmp_dir, dvc, run_copy):
-    from dvc.stage import PipelineStage
+    from dvc.stage.run import PipelineRunStage
     from dvc.dvcfile import Dvcfile, PIPELINE_FILE
 
     tmp_dir.dvc_gen("foo", "foo")
@@ -44,7 +45,7 @@ def test_run_multi_stage_repeat(tmp_dir, dvc, run_copy):
 
     stages = list(Dvcfile(dvc, PIPELINE_FILE).stages.values())
     assert len(stages) == 2
-    assert all(isinstance(stage, PipelineStage) for stage in stages)
+    assert all(isinstance(stage, PipelineRunStage) for stage in stages)
     assert set(stage.name for stage in stages) == {
         "copy-foo-foo1",
         "copy-foo1-foo2",

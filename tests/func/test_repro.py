@@ -861,7 +861,7 @@ class TestReproExternalBase(SingleStageRun, TestDvc):
             stage.outs[0], "checkout", wraps=stage.outs[0].checkout
         )
 
-        patch_run = patch.object(stage, "_run", wraps=stage._run)
+        patch_run = patch.object(stage, "_cmd_run", wraps=stage._cmd_run)
 
         with self.dvc.lock, self.dvc.state:
             with patch_download as mock_download:
@@ -1502,6 +1502,9 @@ def test_recursive_repro_default(dvc, repro_dir):
 
     # Check that the dependency ("origin_copy") and the dependent stages
     # inside the folder have been reproduced ("origin_copy_2", "last_stage")
+    print([type(stage) for stage in stages])
+    print([type(stage) for stage in repro_dir.values()])
+
     assert stages == [
         repro_dir["origin_copy"],
         repro_dir["origin_copy_2"],

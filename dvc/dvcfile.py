@@ -143,9 +143,9 @@ class SingleStageFile(FileMixin):
 
     def dump(self, stage, **kwargs):
         """Dumps given stage appropriately in the dvcfile."""
-        from dvc.stage import PipelineStage
+        from dvc.stage.run import PipelineRunStage
 
-        assert not isinstance(stage, PipelineStage)
+        assert not isinstance(stage, PipelineRunStage)
         check_dvc_filename(self.path)
         logger.debug(
             "Saving information to '{file}'.".format(file=relpath(self.path))
@@ -178,9 +178,9 @@ class PipelineFile(FileMixin):
 
     def dump(self, stage, update_pipeline=False, **kwargs):
         """Dumps given stage appropriately in the dvcfile."""
-        from dvc.stage import PipelineStage
+        from dvc.stage.run import PipelineRunStage
 
-        assert isinstance(stage, PipelineStage)
+        assert isinstance(stage, PipelineRunStage)
         check_dvc_filename(self.path)
         self._dump_lockfile(stage)
         if update_pipeline and not stage.is_data_source:

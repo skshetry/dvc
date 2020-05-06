@@ -38,10 +38,11 @@ def _get_file_path(kwargs):
 @locked
 @scm_context
 def run(self, fname=None, no_exec=False, single_stage=False, **kwargs):
-    from dvc.stage import PipelineStage, Stage, create_stage
+    from dvc.stage import create_stage, get_stage_class
+    from dvc.stage.run import PipelineRunStage
     from dvc.dvcfile import Dvcfile, PIPELINE_FILE
 
-    stage_cls = PipelineStage
+    stage_cls = PipelineRunStage
     path = PIPELINE_FILE
     stage_name = kwargs.get("name")
 
@@ -50,12 +51,12 @@ def run(self, fname=None, no_exec=False, single_stage=False, **kwargs):
             "`-n|--name` is incompatible with `--single-stage`"
         )
 
-    if not stage_name and not single_stage:
+    if not (stage_name or single_stage):
         raise InvalidArgumentError("`-n|--name` is required")
 
     if single_stage:
         kwargs.pop("name", None)
-        stage_cls = Stage
+        stage_cls = get_stage_class(kwargs)
         path = fname or _get_file_path(kwargs)
     else:
         if not is_valid_name(stage_name):
@@ -69,7 +70,7 @@ def run(self, fname=None, no_exec=False, single_stage=False, **kwargs):
     if dvcfile.exists():
         if stage_name and stage_name in dvcfile.stages:
             raise DuplicateStageName(stage_name, dvcfile)
-        if stage_cls != PipelineStage:
+        if stage_cls != PipelineRunStage:
             dvcfile.remove_with_prompt(force=kwargs.get("overwrite", True))
 
     try:

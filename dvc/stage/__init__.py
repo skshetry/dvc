@@ -1,11 +1,8 @@
 import pathlib
 import logging
 import os
-import signal
-import subprocess
-import threading
 
-from itertools import chain, product
+from itertools import product
 
 from funcy import project
 
@@ -15,7 +12,6 @@ import dvc.prompt as prompt
 from dvc.exceptions import CheckoutError, DvcException
 from .decorators import rwlocked, unlocked_repo
 from .exceptions import (
-    StageCmdFailedError,
     StagePathOutsideError,
     StagePathNotFoundError,
     StagePathNotDirectoryError,
@@ -25,12 +21,53 @@ from .exceptions import (
 )
 from . import params
 from dvc.utils import dict_md5
-from dvc.utils import fix_env
 from dvc.utils import relpath
-from dvc.utils.fs import path_isin
 from .params import OutputParams
+from ..utils.fs import path_isin
 
 logger = logging.getLogger(__name__)
+
+
+def check_stage_path(repo, path, is_wdir=False):
+    assert repo is not None
+
+    error_msg = "{wdir_or_path} '{path}' {{}}".format(
+        wdir_or_path="stage working dir" if is_wdir else "file path",
+        path=path,
+    )
+
+    real_path = os.path.realpath(path)
+    if not os.path.exists(real_path):
+        raise StagePathNotFoundError(error_msg.format("does not exist"))
+
+    if not os.path.isdir(real_path):
+        raise StagePathNotDirectoryError(error_msg.format("is not directory"))
+
+    proj_dir = os.path.realpath(repo.root_dir)
+    if real_path != proj_dir and not path_isin(real_path, proj_dir):
+        raise StagePathOutsideError(error_msg.format("is outside of DVC repo"))
+
+
+def check_circular_dependency(stage):
+    from dvc.exceptions import CircularDependencyError
+
+    circular_dependencies = set(d.path_info for d in stage.deps) & set(
+        o.path_info for o in stage.outs
+    )
+
+    if circular_dependencies:
+        raise CircularDependencyError(str(circular_dependencies.pop()))
+
+
+def check_duplicated_arguments(stage):
+    from dvc.exceptions import ArgumentDuplicationError
+    from collections import Counter
+
+    path_counts = Counter(edge.path_info for edge in stage.deps + stage.outs)
+
+    for path, occurrence in path_counts.items():
+        if occurrence > 1:
+            raise ArgumentDuplicationError(str(path))
 
 
 def loads_from(cls, repo, path, wdir, data):
@@ -58,14 +95,14 @@ def create_stage(cls, repo, path, **kwargs):
     wdir = os.path.abspath(kwargs.get("wdir", None) or os.curdir)
     path = os.path.abspath(path)
     check_dvc_filename(path)
-    cls._check_stage_path(repo, wdir, is_wdir=kwargs.get("wdir"))
-    cls._check_stage_path(repo, os.path.dirname(path))
+    check_stage_path(repo, wdir, is_wdir=kwargs.get("wdir"))
+    check_stage_path(repo, os.path.dirname(path))
 
     stage = loads_from(cls, repo, path, wdir, kwargs)
     stage._fill_stage_outputs(**kwargs)
     stage._fill_stage_dependencies(**kwargs)
-    stage._check_circular_dependency()
-    stage._check_duplicated_arguments()
+    check_circular_dependency(stage)
+    check_duplicated_arguments(stage)
 
     if stage and stage.dvcfile.exists():
         has_persist_outs = any(out.persist for out in stage.outs)
@@ -80,6 +117,16 @@ def create_stage(cls, repo, path, **kwargs):
             return None
 
     return stage
+
+
+def get_stage_class(d):
+    from .run import RunStage
+
+    if "cmd" in d:
+        return RunStage
+    if len(d.get("outs", [])) == 1 and len(d.get("deps", [])) == 1:
+        return ImportStage
+    return Pointer
 
 
 class Stage(params.StageParams):
@@ -315,40 +362,7 @@ class Stage(params.StageParams):
         return self
 
     def update(self, rev=None):
-        if not self.is_repo_import and not self.is_import:
-            raise StageUpdateError(self.relpath)
-
-        self.deps[0].update(rev=rev)
-        locked = self.locked
-        self.locked = False
-        try:
-            self.reproduce()
-        finally:
-            self.locked = locked
-
-    @staticmethod
-    def _check_stage_path(repo, path, is_wdir=False):
-        assert repo is not None
-
-        error_msg = "{wdir_or_path} '{path}' {{}}".format(
-            wdir_or_path="stage working dir" if is_wdir else "file path",
-            path=path,
-        )
-
-        real_path = os.path.realpath(path)
-        if not os.path.exists(real_path):
-            raise StagePathNotFoundError(error_msg.format("does not exist"))
-
-        if not os.path.isdir(real_path):
-            raise StagePathNotDirectoryError(
-                error_msg.format("is not directory")
-            )
-
-        proj_dir = os.path.realpath(repo.root_dir)
-        if real_path != proj_dir and not path_isin(real_path, proj_dir):
-            raise StagePathOutsideError(
-                error_msg.format("is outside of DVC repo")
-            )
+        raise StageUpdateError(self.relpath)
 
     @property
     def can_be_skipped(self):
@@ -432,11 +446,6 @@ class Stage(params.StageParams):
             self, kwargs.get("deps", []), erepo=kwargs.get("erepo", None)
         )
         self.deps += dependency.loads_params(self, kwargs.get("params", []))
-
-    def _fix_outs_deps_path(self, wdir):
-        for out in chain(self.outs, self.deps):
-            if out.is_in_repo:
-                out.def_path = relpath(out.path_info, wdir)
 
     def resolve_wdir(self):
         rel_wdir = relpath(self.wdir, os.path.dirname(self.path))
@@ -536,90 +545,12 @@ class Stage(params.StageParams):
         for out in self.outs:
             out.commit()
 
-    @staticmethod
-    def _warn_if_fish(executable):  # pragma: no cover
-        if (
-            executable is None
-            or os.path.basename(os.path.realpath(executable)) != "fish"
-        ):
-            return
-
-        logger.warning(
-            "DVC detected that you are using fish as your default "
-            "shell. Be aware that it might cause problems by overwriting "
-            "your current environment variables with values defined "
-            "in '.fishrc', which might affect your command. See "
-            "https://github.com/iterative/dvc/issues/1307. "
-        )
-
-    def _check_circular_dependency(self):
-        from dvc.exceptions import CircularDependencyError
-
-        circular_dependencies = set(d.path_info for d in self.deps) & set(
-            o.path_info for o in self.outs
-        )
-
-        if circular_dependencies:
-            raise CircularDependencyError(str(circular_dependencies.pop()))
-
-    def _check_duplicated_arguments(self):
-        from dvc.exceptions import ArgumentDuplicationError
-        from collections import Counter
-
-        path_counts = Counter(edge.path_info for edge in self.deps + self.outs)
-
-        for path, occurrence in path_counts.items():
-            if occurrence > 1:
-                raise ArgumentDuplicationError(str(path))
-
     @unlocked_repo
-    def _run(self):
-        kwargs = {"cwd": self.wdir, "env": fix_env(None), "close_fds": True}
+    def _run(self, dry=False, force=False, ignore_build_cache=False):
+        raise NotImplementedError
 
-        if os.name == "nt":
-            kwargs["shell"] = True
-            cmd = self.cmd
-        else:
-            # NOTE: when you specify `shell=True`, `Popen` [1] will default to
-            # `/bin/sh` on *nix and will add ["/bin/sh", "-c"] to your command.
-            # But we actually want to run the same shell that we are running
-            # from right now, which is usually determined by the `SHELL` env
-            # var. So instead, we compose our command on our own, making sure
-            # to include special flags to prevent shell from reading any
-            # configs and modifying env, which may change the behavior or the
-            # command we are running. See [2] for more info.
-            #
-            # [1] https://github.com/python/cpython/blob/3.7/Lib/subprocess.py
-            #                                                            #L1426
-            # [2] https://github.com/iterative/dvc/issues/2506
-            #                                           #issuecomment-535396799
-            kwargs["shell"] = False
-            executable = os.getenv("SHELL") or "/bin/sh"
-
-            self._warn_if_fish(executable)
-
-            opts = {"zsh": ["--no-rcs"], "bash": ["--noprofile", "--norc"]}
-            name = os.path.basename(executable).lower()
-            cmd = [executable] + opts.get(name, []) + ["-c", self.cmd]
-
-        main_thread = isinstance(
-            threading.current_thread(), threading._MainThread
-        )
-        old_handler = None
-        p = None
-
-        try:
-            p = subprocess.Popen(cmd, **kwargs)
-            if main_thread:
-                old_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-            p.communicate()
-        finally:
-            if old_handler:
-                signal.signal(signal.SIGINT, old_handler)
-
-        retcode = None if not p else p.returncode
-        if retcode != 0:
-            raise StageCmdFailedError(self, retcode)
+    def _cmd_run(self):
+        raise NotImplementedError
 
     @rwlocked(read=["deps"], write=["outs"])
     def run(
@@ -634,57 +565,8 @@ class Stage(params.StageParams):
             )
             if not dry:
                 self.check_missing_outputs()
-
-        elif self.is_import:
-            logger.info(
-                "Importing '{dep}' -> '{out}'".format(
-                    dep=self.deps[0], out=self.outs[0]
-                )
-            )
-            if not dry:
-                if (
-                    not force
-                    and not self.stage_changed(warn=True)
-                    and self._already_cached()
-                ):
-                    self.outs[0].checkout()
-                else:
-                    self.deps[0].download(self.outs[0])
-        elif self.is_data_source:
-            msg = "Verifying data sources in {}".format(self)
-            logger.info(msg)
-            if not dry:
-                self.check_missing_outputs()
-
         else:
-            if not dry:
-                stage_cache = self.repo.stage_cache
-                stage_cached = (
-                    not force
-                    and not self.is_callback
-                    and not self.always_changed
-                    and self._already_cached()
-                )
-                use_build_cache = False
-                if not stage_cached:
-                    self._save_deps()
-                    use_build_cache = (
-                        not force
-                        and not ignore_build_cache
-                        and stage_cache.is_cached(self)
-                    )
-
-                if use_build_cache:
-                    # restore stage from build cache
-                    self.repo.stage_cache.restore(self)
-                    stage_cached = self._outs_cached()
-
-                if stage_cached:
-                    logger.info("Stage is cached, skipping.")
-                    self.checkout()
-                else:
-                    logger.info("Running command:\n\t{}".format(self.cmd))
-                    self._run()
+            self._run(dry, force, ignore_build_cache)
 
         if not dry:
             self.save()
@@ -793,45 +675,36 @@ class Stage(params.StageParams):
         return cache
 
 
-class PipelineStage(Stage):
-    def __init__(self, *args, name=None, meta=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = name
-        self.cmd_changed = False
-        # This is how the Stage will discover any discrepancies
-        self.meta = meta or {}
+class Pointer(Stage):
+    def _run(self, dry=False, force=False, ignore_build_cache=False):
+        msg = "Verifying data sources in {}".format(self)
+        logger.info(msg)
+        if not dry:
+            self.check_missing_outputs()
 
-    def __eq__(self, other):
-        return super().__eq__(other) and self.name == other.name
 
-    def __hash__(self):
-        return hash((self.path_in_repo, self.name))
-
-    def __repr__(self):
-        return "Stage: '{path}:{name}'".format(
-            path=self.relpath if self.path else "No path", name=self.name
+class ImportStage(Stage):
+    def _run(self, dry=False, force=False, ignore_build_cache=False):
+        logger.info(
+            "Importing '{dep}' -> '{out}'".format(
+                dep=self.deps[0], out=self.outs[0]
+            )
         )
+        if not dry:
+            if (
+                not force
+                and not self.stage_changed(warn=True)
+                and self._already_cached()
+            ):
+                self.outs[0].checkout()
+            else:
+                self.deps[0].download(self.outs[0])
 
-    def __str__(self):
-        return "stage: '{path}:{name}'".format(
-            path=self.relpath if self.path else "No path", name=self.name
-        )
-
-    @property
-    def addressing(self):
-        return super().addressing + ":" + self.name
-
-    def reload(self):
-        return self.dvcfile.stages[self.name]
-
-    @property
-    def is_cached(self):
-        return self.name in self.dvcfile.stages and super().is_cached
-
-    def stage_status(self):
-        return ["changed command"] if self.cmd_changed else []
-
-    def stage_changed(self, warn=False):
-        if self.cmd_changed and warn:
-            logger.warning("'cmd' of {} has changed.".format(self))
-        return self.cmd_changed
+    def update(self, rev=None):
+        self.deps[0].update(rev=rev)
+        locked = self.locked
+        self.locked = False
+        try:
+            self.reproduce()
+        finally:
+            self.locked = locked

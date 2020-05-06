@@ -127,12 +127,15 @@ class StageLoader(Mapping):
 
     @classmethod
     def load_stage(cls, dvcfile, name, stage_data, lock_data):
-        from . import PipelineStage, Stage, loads_from
+        from . import Stage, loads_from
+        from .run import PipelineRunStage
 
         path, wdir = resolve_paths(
             dvcfile.path, stage_data.get(Stage.PARAM_WDIR)
         )
-        stage = loads_from(PipelineStage, dvcfile.repo, path, wdir, stage_data)
+        stage = loads_from(
+            PipelineRunStage, dvcfile.repo, path, wdir, stage_data
+        )
         stage.name = name
         params = stage_data.pop("params", {})
         stage._fill_stage_dependencies(**stage_data)
@@ -207,15 +210,15 @@ class SingleStageLoader(Mapping):
 
     @classmethod
     def load_stage(cls, dvcfile, d, stage_text):
-        from dvc.stage import Stage, loads_from
+        from dvc.stage import Stage, loads_from, get_stage_class
 
         path, wdir = resolve_paths(dvcfile.path, d.get(Stage.PARAM_WDIR))
-        stage = loads_from(Stage, dvcfile.repo, path, wdir, d)
+        stage = loads_from(get_stage_class(d), dvcfile.repo, path, wdir, d)
         stage._stage_text = stage_text
         stage.deps = dependency.loadd_from(
-            stage, d.get(Stage.PARAM_DEPS) or []
+            stage, d.get(stage.PARAM_DEPS) or []
         )
-        stage.outs = output.loadd_from(stage, d.get(Stage.PARAM_OUTS) or [])
+        stage.outs = output.loadd_from(stage, d.get(stage.PARAM_OUTS) or [])
         return stage
 
     def __iter__(self):

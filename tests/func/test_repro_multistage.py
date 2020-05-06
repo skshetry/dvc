@@ -8,7 +8,7 @@ from funcy import lsplit
 
 from dvc.dvcfile import PIPELINE_FILE, PIPELINE_LOCK
 from dvc.exceptions import CyclicGraphError
-from dvc.stage import PipelineStage
+from dvc.stage.run import PipelineRunStage
 from dvc.utils.stage import dump_stage_file, parse_stage
 
 from tests.func import test_repro
@@ -265,17 +265,17 @@ def test_downstream(tmp_dir, dvc):
 
     assert len(evaluation) == 3
     assert (
-        isinstance(evaluation[0], PipelineStage)
+        isinstance(evaluation[0], PipelineRunStage)
         and evaluation[0].relpath == PIPELINE_FILE
         and evaluation[0].name == "B-gen"
     )
     assert (
-        isinstance(evaluation[1], PipelineStage)
+        isinstance(evaluation[1], PipelineRunStage)
         and evaluation[1].relpath == PIPELINE_FILE
         and evaluation[1].name == "D-gen"
     )
     assert (
-        not isinstance(evaluation[2], PipelineStage)
+        not isinstance(evaluation[2], PipelineRunStage)
         and evaluation[2].relpath == "E.dvc"
     )
 
@@ -287,25 +287,25 @@ def test_downstream(tmp_dir, dvc):
 
     assert len(evaluation) == 5
     assert (
-        isinstance(evaluation[0], PipelineStage)
+        isinstance(evaluation[0], PipelineRunStage)
         and evaluation[0].relpath == PIPELINE_FILE
         and evaluation[0].name == "A-gen"
     )
     names = set()
     for stage in evaluation[1:3]:
-        if isinstance(stage, PipelineStage):
+        if isinstance(stage, PipelineRunStage):
             assert stage.relpath == PIPELINE_FILE
             names.add(stage.name)
         else:
             names.add(stage.relpath)
     assert names == {"B-gen", "C.dvc"}
     assert (
-        isinstance(evaluation[3], PipelineStage)
+        isinstance(evaluation[3], PipelineRunStage)
         and evaluation[3].relpath == PIPELINE_FILE
         and evaluation[3].name == "D-gen"
     )
     assert (
-        not isinstance(evaluation[4], PipelineStage)
+        not isinstance(evaluation[4], PipelineRunStage)
         and evaluation[4].relpath == "E.dvc"
     )
 

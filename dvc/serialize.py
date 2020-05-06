@@ -11,7 +11,8 @@ from dvc.utils.stage import parse_stage_for_update
 from typing import List
 
 if TYPE_CHECKING:
-    from dvc.stage import PipelineStage, Stage
+    from dvc.stage import Stage
+    from dvc.stage.run import PipelineRunStage
 
 PARAM_PATH = ParamsDependency.PARAM_PATH
 PARAM_PARAMS = ParamsDependency.PARAM_PARAMS
@@ -21,7 +22,7 @@ DEFAULT_PARAMS_FILE = ParamsDependency.DEFAULT_PARAMS_FILE
 sort_by_path = partial(sorted, key=attrgetter("def_path"))
 
 
-def _get_outs(stage: "PipelineStage"):
+def _get_outs(stage: "PipelineRunStage"):
     outs_bucket = {}
     for o in sort_by_path(stage.outs):
         bucket_key = ["metrics"] if o.metric else ["outs"]
@@ -35,7 +36,7 @@ def _get_outs(stage: "PipelineStage"):
     return [(key, outs_bucket[key]) for key in sorted(outs_bucket.keys())]
 
 
-def get_params_deps(stage: "PipelineStage"):
+def get_params_deps(stage: "PipelineRunStage"):
     return lsplit(rpartial(isinstance, ParamsDependency), stage.deps)
 
 
@@ -72,7 +73,7 @@ def _serialize_params(params: List[ParamsDependency]):
     return keys, key_vals
 
 
-def to_pipeline_file(stage: "PipelineStage"):
+def to_pipeline_file(stage: "PipelineRunStage"):
     params, deps = get_params_deps(stage)
     serialized_params, _ = _serialize_params(params)
 
@@ -114,7 +115,7 @@ def to_single_stage_lockfile(stage: "Stage") -> dict:
     return res
 
 
-def to_lockfile(stage: "PipelineStage") -> dict:
+def to_lockfile(stage: "PipelineRunStage") -> dict:
     assert stage.name
     return {stage.name: to_single_stage_lockfile(stage)}
 
