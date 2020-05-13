@@ -1,5 +1,18 @@
+version: "2"
 languages:
     Python: true
-
-exclude_paths:
+checks:
+  argument-count:
+    config:
+      threshold: 7
+  file-lines:
+    config:
+      threshold: 500
+  method-complexity:
+    config:
+      threshold: 10
+  method-count:
+    config:
+      threshold: 30
+exclude_patterns:
     - tests/
