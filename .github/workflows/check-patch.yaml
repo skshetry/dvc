@@ -19,7 +19,6 @@ jobs:
       run: ./scripts/ci/check_patch.sh
 
   tests:
-    needs: lint
     name: ${{ matrix.os }} / ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}-latest
     strategy:
