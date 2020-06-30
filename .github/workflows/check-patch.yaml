@@ -1,9 +1,9 @@
-name: Lint Python
+name: Tests
 
 on: [push, pull_request]
 
 jobs:
-  build:
+  lint:
 
     runs-on: ubuntu-latest
 
@@ -17,3 +17,42 @@ jobs:
       run: bash ./scripts/ci/install.sh
     - name: Check Patch
       run: ./scripts/ci/check_patch.sh
+
+  tests:
+    needs: lint
+    name: ${{ matrix.os }} / ${{ matrix.python-version }}
+      runs-on: ${{ matrix.os }}-latest
+      strategy:
+        matrix:
+          os: [ubuntu, macos, windows]
+          python-version: [3.6, 3.7, 3.8]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up cache
+        uses: actions/cache@v2
+        id: cache-venv
+        with:
+          path: .venv
+          key: ${{ runner.os }}-pip-${{ hashFiles('setup.py') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            ${{ runner.os }}-
+
+      - name: Ensure cache is healthy
+        id: cache-venv
+        if: steps.cache-venv.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          python -m venv ./.venv && . ./.venv/bin/activate
+
+      - name: Install Dependencies
+        run: ./scripts/ci/install.sh
+
+      - name: Run Tests
+        run: ./scripts/ci/script.sh
