@@ -43,7 +43,6 @@ jobs:
           restore-keys: ${{ runner.os }}-${ matrix.python-version }}-pip-
 
       - name: Ensure cache is healthy
-        id: cache-venv
         if: steps.cache-venv.outputs.cache-hit != 'true'
         shell: bash
         run: |
