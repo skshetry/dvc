@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 class LocalRemoteTree(BaseRemoteTree):
     scheme = Schemes.LOCAL
-    PATH_CLS = PathInfo
+    PATH_CLS = PathInfo  # type: ignore
     PARAM_CHECKSUM = "md5"
     PARAM_PATH = "path"
     TRAVERSE_PREFIX_LEN = 2
@@ -343,7 +343,7 @@ def _log_exceptions(func, operation):
 
 
 class LocalRemote(Remote):
-    INDEX_CLS = RemoteIndexNoop
+    INDEX_CLS = RemoteIndexNoop  # type: ignore
 
 
 class LocalCache(CloudCache):

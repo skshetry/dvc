@@ -3,6 +3,7 @@ from voluptuous import Any, Optional, Required, Schema
 from dvc import dependency, output
 from dvc.output import CHECKSUMS_SCHEMA, BaseOutput
 from dvc.stage.params import StageParams
+from dvc.types import DictStrAny
 
 STAGES = "stages"
 SINGLE_STAGE_SCHEMA = {
@@ -39,7 +40,7 @@ PLOT_PROPS = {
     BaseOutput.PARAM_PLOT_TITLE: str,
     BaseOutput.PARAM_PLOT_HEADER: bool,
 }
-PLOT_PROPS_SCHEMA = {
+PLOT_PROPS_SCHEMA: DictStrAny = {
     **OUT_PSTAGE_DETAILED_SCHEMA[str],
     **PLOT_PROPS,
 }

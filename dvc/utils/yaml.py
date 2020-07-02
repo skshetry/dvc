@@ -8,7 +8,7 @@ from dvc.exceptions import YAMLFileCorruptedError
 try:
     from yaml import CSafeLoader as SafeLoader
 except ImportError:
-    from yaml import SafeLoader
+    from yaml import SafeLoader  # type: ignore
 
 
 def load_yaml(path):

@@ -8,17 +8,22 @@ from dvc.utils import fix_env
 
 from .decorators import unlocked_repo
 from .exceptions import StageCmdFailedError
+from typing import List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from dvc.stage import Stage
+
 
 logger = logging.getLogger(__name__)
 
 
-def _nix_cmd(executable, cmd):
+def _nix_cmd(executable: str, cmd: str) -> List[str]:
     opts = {"zsh": ["--no-rcs"], "bash": ["--noprofile", "--norc"]}
     name = os.path.basename(executable).lower()
     return [executable] + opts.get(name, []) + ["-c", cmd]
 
 
-def warn_if_fish(executable):
+def warn_if_fish(executable: str) -> None:
     if (
         executable is None
         or os.path.basename(os.path.realpath(executable)) != "fish"
@@ -35,12 +40,13 @@ def warn_if_fish(executable):
 
 
 @unlocked_repo
-def cmd_run(stage, *args, **kwargs):
+def cmd_run(stage: "Stage", *args, **kwargs) -> None:
+    assert stage.cmd
     kwargs = {"cwd": stage.wdir, "env": fix_env(None), "close_fds": True}
 
     if os.name == "nt":
         kwargs["shell"] = True
-        cmd = stage.cmd
+        cmd = [stage.cmd]
     else:
         # NOTE: when you specify `shell=True`, `Popen` [1] will default to
         # `/bin/sh` on *nix and will add ["/bin/sh", "-c"] to your command.
@@ -61,8 +67,7 @@ def cmd_run(stage, *args, **kwargs):
         cmd = _nix_cmd(executable, stage.cmd)
 
     main_thread = isinstance(
-        threading.current_thread(),
-        threading._MainThread,  # pylint: disable=protected-access
+        threading.current_thread(), threading._MainThread,  # type: ignore
     )
     old_handler = None
     p = None
@@ -81,7 +86,7 @@ def cmd_run(stage, *args, **kwargs):
         raise StageCmdFailedError(stage.cmd, retcode)
 
 
-def _is_cached(stage):
+def _is_cached(stage: "Stage") -> bool:
     cached = (
         not stage.is_callback
         and not stage.always_changed
@@ -92,7 +97,7 @@ def _is_cached(stage):
     return cached
 
 
-def restored_from_cache(stage):
+def restored_from_cache(stage: "Stage") -> bool:
     stage.save_deps()
     stage_cache = stage.repo.stage_cache
     if not stage_cache.is_cached(stage):
@@ -105,7 +110,12 @@ def restored_from_cache(stage):
     return restored
 
 
-def run_stage(stage, dry=False, force=False, run_cache=False):
+def run_stage(
+    stage: "Stage",
+    dry: bool = False,
+    force: bool = False,
+    run_cache: bool = False,
+) -> None:
     if not (dry or force):
         stage_cached = _is_cached(stage) or (
             run_cache and restored_from_cache(stage)

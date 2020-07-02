@@ -7,7 +7,7 @@ from dvc.utils import format_link, relpath
 class DvcException(Exception):
     """Base class for all dvc exceptions."""
 
-    def __init__(self, msg, *args):
+    def __init__(self, msg: str, *args):
         assert msg
         super().__init__(msg, *args)
 

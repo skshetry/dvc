@@ -8,6 +8,7 @@ from copy import copy
 from functools import partial, wraps
 from multiprocessing import cpu_count
 from operator import itemgetter
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 from shortuuid import uuid
@@ -24,7 +25,7 @@ from dvc.ignore import DvcIgnore
 from dvc.path_info import PathInfo, URLInfo, WindowsPathInfo
 from dvc.progress import Tqdm
 from dvc.remote.index import RemoteIndex, RemoteIndexNoop
-from dvc.remote.slow_link_detection import slow_link_guard
+from dvc.remote.slow_link_detection import slow_link_guard  # type: ignore
 from dvc.state import StateNoop
 from dvc.utils import tmp_fname
 from dvc.utils.fs import makedirs, move
@@ -84,7 +85,7 @@ def index_locked(f):
 
 class BaseRemoteTree:
     scheme = "base"
-    REQUIRES = {}
+    REQUIRES: Dict[str, str] = {}
     PATH_CLS = URLInfo
     JOBS = 4 * cpu_count()
 
@@ -98,9 +99,12 @@ class BaseRemoteTree:
     TRAVERSE_THRESHOLD_SIZE = 500000
     CAN_TRAVERSE = True
 
-    CACHE_MODE = None
-    SHARED_MODE_MAP = {None: (None, None), "group": (None, None)}
-    PARAM_CHECKSUM = None
+    CACHE_MODE: Optional[int] = None
+    SHARED_MODE_MAP: Dict[Any, Tuple[Any, Any]] = {
+        None: (None, None),
+        "group": (None, None),
+    }
+    PARAM_CHECKSUM: Optional[str] = None
 
     state = StateNoop()
 

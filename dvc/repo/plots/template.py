@@ -4,6 +4,7 @@ import os
 from funcy import cached_property
 
 from dvc.exceptions import DvcException
+from dvc.types import DictStrAny
 from dvc.utils.fs import makedirs
 
 
@@ -29,8 +30,8 @@ class Template:
     EXTENSION = ".json"
     ANCHOR = "<DVC_METRIC_{}>"
 
-    DEFAULT_CONTENT = None
-    DEFAULT_NAME = None
+    DEFAULT_CONTENT: DictStrAny
+    DEFAULT_NAME: str
 
     def __init__(self, content=None, name=None):
         self.content = self.DEFAULT_CONTENT if content is None else content

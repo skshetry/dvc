@@ -1,13 +1,15 @@
+from dvc.types import DictStrAny
 import os
 import pathlib
 from itertools import product
+from typing import TYPE_CHECKING, List, Tuple
 
 from funcy import lsplit, rpartial
 
 from dvc import dependency, output
 from dvc.utils.fs import path_isin
 
-from ..dependency import ParamsDependency
+from ..dependency.param import ParamsDependency
 from ..remote.local import LocalRemoteTree
 from ..remote.s3 import S3RemoteTree
 from ..utils import dict_md5, format_link, relpath
@@ -18,6 +20,10 @@ from .exceptions import (
     StagePathNotFoundError,
     StagePathOutsideError,
 )
+
+if TYPE_CHECKING:
+    from . import Stage
+    from ..dependency.base import BaseDependency
 
 
 def check_stage_path(repo, path, is_wdir=False):
@@ -186,7 +192,7 @@ def resolve_paths(path, wdir=None):
     return path, wdir
 
 
-def get_dump(stage):
+def get_dump(stage) -> DictStrAny:
     return {
         key: value
         for key, value in {
@@ -202,5 +208,7 @@ def get_dump(stage):
     }
 
 
-def split_params_deps(stage):
-    return lsplit(rpartial(isinstance, ParamsDependency), stage.deps)
+def split_params_deps(
+    stage: "Stage",
+) -> Tuple[List[ParamsDependency], List["BaseDependency"]]:
+    return lsplit(rpartial(isinstance, ParamsDependency), stage.deps)  # type: ignore

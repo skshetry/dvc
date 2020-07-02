@@ -4,7 +4,7 @@ import tempfile
 import threading
 from contextlib import contextmanager
 from distutils.dir_util import copy_tree
-from typing import Iterable
+from typing import Dict, Iterable
 
 from funcy import cached_property, retry, wrap_with
 
@@ -53,8 +53,8 @@ def external_repo(url, rev=None, for_write=False):
             _remove(path)
 
 
-CLONES = {}
-CACHE_DIRS = {}
+CLONES: Dict[str, str] = {}
+CACHE_DIRS: Dict[str, str] = {}
 
 
 def clean_repos():
@@ -71,6 +71,9 @@ class BaseExternalRepo:
     # pylint: disable=no-member
 
     _local_cache = None
+
+    root_dir: str
+    url: str
 
     @property
     def local_cache(self):

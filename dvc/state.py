@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sqlite3
+from typing import List
 from urllib.parse import urlencode, urlunparse
 
 from dvc.exceptions import DvcException
@@ -30,7 +31,7 @@ class StateVersionTooNewError(DvcException):
 
 
 class StateNoop:
-    files = []
+    files: List[str] = []
 
     def save(self, path_info, checksum):
         pass

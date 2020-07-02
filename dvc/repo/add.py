@@ -1,9 +1,11 @@
 import logging
 import os
+from typing import TYPE_CHECKING, List, Optional
 
 import colorama
 
 from dvc.dvcfile import Dvcfile, is_dvc_file
+from dvc.progress import Tqdm
 
 from ..exceptions import (
     OutputDuplicationError,
@@ -16,13 +18,23 @@ from ..repo.scm_context import scm_context
 from ..utils import LARGE_DIR_SIZE, resolve_paths
 from . import locked
 
+if TYPE_CHECKING:
+    from dvc.stage import Stage
+    from dvc.repo import Repo
+
+
 logger = logging.getLogger(__name__)
 
 
 @locked
 @scm_context
 def add(
-    repo, targets, recursive=False, no_commit=False, fname=None, external=False
+    repo: "Repo",
+    targets: List[str],
+    recursive=False,
+    no_commit=False,
+    fname=None,
+    external=False,
 ):
     if recursive and fname:
         raise RecursiveAddingWhileUsingFilename()
@@ -95,7 +107,7 @@ def add(
                     if not no_commit:
                         stage.commit()
 
-                    Dvcfile(repo, stage.path).dump(stage)
+                    Dvcfile(repo, stage.path).dump(stage)  # type: ignore
                     pbar_stages.update()
 
             stages_list += stages
@@ -106,7 +118,7 @@ def add(
     return stages_list
 
 
-def _find_all_targets(repo, target, recursive):
+def _find_all_targets(repo: "Repo", target: str, recursive: bool) -> List[str]:
     if os.path.isdir(target) and recursive:
         return [
             fname
@@ -124,7 +136,13 @@ def _find_all_targets(repo, target, recursive):
     return [target]
 
 
-def _create_stages(repo, targets, fname, pbar=None, external=False):
+def _create_stages(
+    repo: "Repo",
+    targets: List[str],
+    fname: Optional[str],
+    pbar: Optional[Tqdm] = None,
+    external: bool = False,
+) -> List["Stage"]:
     from dvc.stage import Stage, create_stage
 
     stages = []
@@ -145,7 +163,7 @@ def _create_stages(repo, targets, fname, pbar=None, external=False):
             external=external,
         )
         if stage:
-            Dvcfile(repo, stage.path).remove()
+            Dvcfile(repo, stage.path).remove()  # type: ignore
 
         repo._reset()  # pylint: disable=protected-access
 

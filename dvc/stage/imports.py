@@ -1,9 +1,14 @@
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from dvc.stage import Stage
+
 
 logger = logging.getLogger(__name__)
 
 
-def update_import(stage, rev=None):
+def update_import(stage: "Stage", rev: str = None) -> None:
     stage.deps[0].update(rev=rev)
     frozen = stage.frozen
     stage.frozen = False
@@ -13,7 +18,9 @@ def update_import(stage, rev=None):
         stage.frozen = frozen
 
 
-def sync_import(stage, dry=False, force=False):
+def sync_import(
+    stage: "Stage", dry: bool = False, force: bool = False
+) -> None:
     """Synchronize import's outs to the workspace."""
     logger.info(
         "Importing '{dep}' -> '{out}'".format(

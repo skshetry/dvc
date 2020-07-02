@@ -1,3 +1,5 @@
+# type: ignore[no-attribute]
+
 import logging
 import sys
 import time

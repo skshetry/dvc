@@ -1,6 +1,22 @@
+from dvc.types import DictStrAny, ListStr
 import logging
 import os
 import string
+from typing import (
+    Any,
+    DefaultDict,
+    Dict,
+    Generator,
+    Iterable,
+    Iterator,
+    Tuple,
+    Type,
+    Union,
+    Optional,
+    TYPE_CHECKING,
+    List,
+    TypeVar,
+)
 from collections import defaultdict
 
 from funcy import cached_property, project
@@ -27,13 +43,31 @@ from .utils import (
     get_dump,
     stage_dump_eq,
 )
+from dvc.dependency.local import LocalDependency
+from dvc.dependency.repo import RepoDependency
+from dvc.output.local import LocalOutput
+
+if TYPE_CHECKING:
+    from dvc.dvcfile import Dvcfile
+    from dvc.repo import Repo
+    from dvc.dependency.base import BaseDependency
+    from dvc.output.base import BaseOutput
+    from dvc.path_info import PathInfo
+    from dvc.cache import NamedCache
+    from dvc.dvcfile import PipelineFile, SingleStageFile
+
 
 logger = logging.getLogger(__name__)
 # Disallow all punctuation characters except hyphen and underscore
 INVALID_STAGENAME_CHARS = set(string.punctuation) - {"_", "-"}
 
 
-def loads_from(cls, repo, path, wdir, data):
+T = TypeVar("T", "Stage", "PipelineStage", covariant=True)
+
+
+def loads_from(
+    cls: Type[T], repo: "Repo", path: str, wdir: str, data: Dict[str, Any],
+) -> T:
     kw = {
         "repo": repo,
         "path": path,
@@ -50,10 +84,12 @@ def loads_from(cls, repo, path, wdir, data):
             ],
         ),
     }
-    return cls(**kw)
+    return cls(**kw)  # type: ignore
 
 
-def create_stage(cls, repo, path, external=False, **kwargs):
+def create_stage(
+    cls: Type[T], repo: "Repo", path: str, external: bool = False, **kwargs,
+) -> Optional[T]:
     from dvc.dvcfile import check_dvc_filename
 
     wdir = os.path.abspath(kwargs.get("wdir", None) or os.curdir)
@@ -93,19 +129,19 @@ class Stage(params.StageParams):
 
     def __init__(
         self,
-        repo,
-        path=None,
-        cmd=None,
-        wdir=os.curdir,
-        deps=None,
-        outs=None,
-        md5=None,
-        locked=False,  # backward compatibility
-        frozen=False,
-        always_changed=False,
-        stage_text=None,
-        dvcfile=None,
-    ):
+        repo: "Repo",
+        path: str = None,
+        cmd: str = None,
+        wdir: str = os.curdir,
+        deps: "List[BaseDependency]" = None,
+        outs: "List[BaseOutput]" = None,
+        md5: str = None,
+        locked: bool = False,
+        frozen: bool = False,
+        always_changed: bool = False,
+        stage_text: str = None,
+        dvcfile: "Dvcfile" = None,
+    ) -> None:
         if deps is None:
             deps = []
         if outs is None:
@@ -115,13 +151,13 @@ class Stage(params.StageParams):
         self._path = path
         self.cmd = cmd
         self.wdir = wdir
-        self.outs = outs
-        self.deps = deps
+        self.outs: "List[BaseOutput]" = outs
+        self.deps: "List[BaseDependency]" = deps
         self.md5 = md5
         self.frozen = locked or frozen
         self.always_changed = always_changed
         self._stage_text = stage_text
-        self._dvcfile = dvcfile
+        self._dvcfile: Optional["Dvcfile"] = dvcfile
 
     @property
     def path(self):
@@ -134,7 +170,7 @@ class Stage(params.StageParams):
         self.__dict__.pop("relpath", None)
 
     @property
-    def dvcfile(self):
+    def dvcfile(self) -> "Dvcfile":
         if self.path and self._dvcfile and self.path == self._dvcfile.path:
             return self._dvcfile
 
@@ -147,30 +183,31 @@ class Stage(params.StageParams):
         from dvc.dvcfile import Dvcfile
 
         self._dvcfile = Dvcfile(self.repo, self.path)
+        assert self._dvcfile
         return self._dvcfile
 
     @dvcfile.setter
-    def dvcfile(self, dvcfile):
+    def dvcfile(self, dvcfile: "Dvcfile"):
         self._dvcfile = dvcfile
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Stage: '{self.addressing}'"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"stage: '{self.addressing}'"
 
     @property
-    def addressing(self):
+    def addressing(self) -> str:
         """
         Useful for alternative presentations where we don't need
         `Stage:` prefix.
         """
-        return self.relpath if self.path else "No path"
+        return self.relpath if self.path else "No path"  # type: ignore
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.path_in_repo)
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return (
             self.__class__ == other.__class__
             and self.repo is other.repo
@@ -178,20 +215,20 @@ class Stage(params.StageParams):
         )
 
     @cached_property
-    def path_in_repo(self):
+    def path_in_repo(self) -> str:
         return relpath(self.path, self.repo.root_dir)
 
     @cached_property
-    def relpath(self):
+    def relpath(self) -> str:
         return relpath(self.path)
 
     @property
-    def is_data_source(self):
+    def is_data_source(self) -> bool:
         """Whether the DVC-file was created with `dvc add` or `dvc import`"""
         return self.cmd is None
 
     @property
-    def is_callback(self):
+    def is_callback(self) -> bool:
         """
         A callback stage is always considered as changed,
         so it runs on every `dvc repro` call.
@@ -199,18 +236,18 @@ class Stage(params.StageParams):
         return not self.is_data_source and len(self.deps) == 0
 
     @property
-    def is_import(self):
+    def is_import(self) -> bool:
         """Whether the DVC-file was created with `dvc import`."""
         return not self.cmd and len(self.deps) == 1 and len(self.outs) == 1
 
     @property
-    def is_repo_import(self):
+    def is_repo_import(self) -> bool:
         if not self.is_import:
             return False
 
         return isinstance(self.deps[0], dependency.RepoDependency)
 
-    def changed_deps(self):
+    def changed_deps(self) -> bool:
         if self.frozen:
             return False
 
@@ -228,7 +265,7 @@ class Stage(params.StageParams):
 
         return self._changed_deps()
 
-    def _changed_deps(self):
+    def _changed_deps(self) -> bool:
         for dep in self.deps:
             status = dep.status()
             if status:
@@ -241,7 +278,7 @@ class Stage(params.StageParams):
                 return True
         return False
 
-    def changed_outs(self):
+    def changed_outs(self) -> bool:
         for out in self.outs:
             status = out.status()
             if status:
@@ -255,14 +292,14 @@ class Stage(params.StageParams):
 
         return False
 
-    def changed_stage(self):
+    def changed_stage(self) -> bool:
         changed = self.md5 != self.compute_md5()
         if changed:
             logger.debug(self._changed_stage_entry())
         return changed
 
     @rwlocked(read=["deps", "outs"])
-    def changed(self):
+    def changed(self) -> bool:
         is_changed = (
             # Short-circuit order: stage md5 is fast,
             # deps are expected to change
@@ -275,7 +312,9 @@ class Stage(params.StageParams):
         return is_changed
 
     @rwlocked(write=["outs"])
-    def remove_outs(self, ignore_remove=False, force=False):
+    def remove_outs(
+        self, ignore_remove: bool = False, force: bool = False
+    ) -> None:
         """Used mainly for `dvc remove --outs` and :func:`Stage.reproduce`."""
         for out in self.outs:
             if out.persist and not force:
@@ -285,16 +324,18 @@ class Stage(params.StageParams):
             logger.debug(f"Removing output '{out}' of {self}.")
             out.remove(ignore_remove=ignore_remove)
 
-    def unprotect_outs(self):
+    def unprotect_outs(self) -> None:
         for out in self.outs:
             out.unprotect()
 
-    def ignore_remove_outs(self):
+    def ignore_remove_outs(self) -> None:
         for out in self.outs:
             out.ignore_remove()
 
     @rwlocked(write=["outs"])
-    def remove(self, force=False, remove_outs=True, purge=True):
+    def remove(
+        self, force: bool = False, remove_outs: bool = True, purge: bool = True
+    ) -> None:
         if remove_outs:
             self.remove_outs(ignore_remove=True, force=force)
         else:
@@ -304,7 +345,9 @@ class Stage(params.StageParams):
             self.dvcfile.remove_stage(self)
 
     @rwlocked(read=["deps"], write=["outs"])
-    def reproduce(self, interactive=False, **kwargs):
+    def reproduce(
+        self, interactive: bool = False, **kwargs
+    ) -> Optional["Stage"]:
         if not (kwargs.get("force", False) or self.changed()):
             logger.info("Stage '%s' didn't change, skipping", self.addressing)
             return None
@@ -323,22 +366,22 @@ class Stage(params.StageParams):
 
         return self
 
-    def update(self, rev=None):
+    def update(self, rev: Optional[str] = None) -> None:
         if not (self.is_repo_import or self.is_import):
             raise StageUpdateError(self.relpath)
         update_import(self, rev=rev)
 
     @property
-    def can_be_skipped(self):
+    def can_be_skipped(self) -> bool:
         return (
             self.is_cached and not self.is_callback and not self.always_changed
         )
 
-    def reload(self):
+    def reload(self) -> "Stage":
         return self.dvcfile.stage
 
     @property
-    def is_cached(self):
+    def is_cached(self) -> bool:
         """Checks if this stage has been already ran and stored"""
         old = self.reload()
         if old.changed_outs():
@@ -363,10 +406,10 @@ class Stage(params.StageParams):
 
         return True
 
-    def dumpd(self):
+    def dumpd(self) -> DictStrAny:
         return get_dump(self)
 
-    def compute_md5(self):
+    def compute_md5(self) -> Optional[str]:
         # `dvc add`ed files don't need stage md5
         if self.is_data_source and not (self.is_import or self.is_repo_import):
             m = None
@@ -375,33 +418,35 @@ class Stage(params.StageParams):
         logger.debug(f"Computed {self} md5: '{m}'")
         return m
 
-    def save(self):
+    def save(self) -> None:
         self.save_deps()
         self.save_outs()
         self.md5 = self.compute_md5()
 
         self.repo.stage_cache.save(self)
 
-    def save_deps(self):
+    def save_deps(self) -> None:
         for dep in self.deps:
             dep.save()
 
-    def save_outs(self):
+    def save_outs(self) -> None:
         for out in self.outs:
             out.save()
 
-    def ignore_outs(self):
+    def ignore_outs(self) -> None:
         for out in self.outs:
             out.ignore()
 
     @staticmethod
-    def _changed_entries(entries):
+    def _changed_entries(
+        entries: Union[List[BaseDependency], List[BaseOutput]]
+    ) -> ListStr:
         return [str(entry) for entry in entries if entry.changed_checksum()]
 
-    def _changed_stage_entry(self):
+    def _changed_stage_entry(self) -> str:
         return f"'md5' of {self} changed."
 
-    def changed_entries(self):
+    def changed_entries(self,) -> Tuple[ListStr, ListStr, Optional[str]]:
         changed_deps = self._changed_entries(self.deps)
         changed_outs = self._changed_entries(self.outs)
         return (
@@ -411,12 +456,18 @@ class Stage(params.StageParams):
         )
 
     @rwlocked(write=["outs"])
-    def commit(self):
+    def commit(self) -> None:
         for out in self.outs:
             out.commit()
 
     @rwlocked(read=["deps"], write=["outs"])
-    def run(self, dry=False, no_commit=False, force=False, run_cache=True):
+    def run(
+        self,
+        dry: bool = False,
+        no_commit: bool = False,
+        force: bool = False,
+        run_cache: bool = True,
+    ) -> None:
         if (self.cmd or self.is_import) and not self.frozen and not dry:
             self.remove_outs(ignore_remove=False, force=False)
 
@@ -437,7 +488,9 @@ class Stage(params.StageParams):
             if not no_commit:
                 self.commit()
 
-    def _filter_outs(self, path_info):
+    def _filter_outs(
+        self, path_info: Optional["PathInfo"]
+    ) -> Iterable["BaseOutput"]:
         def _func(o):
             return path_info.isin_or_eq(o.path_info)
 
@@ -445,7 +498,7 @@ class Stage(params.StageParams):
 
     @rwlocked(write=["outs"])
     def checkout(self, **kwargs):
-        stats = defaultdict(list)
+        stats: DefaultDict[str, List["PathInfo"]] = defaultdict(list)
         for out in self._filter_outs(kwargs.get("filter_info")):
             key, outs = self._checkout(out, **kwargs)
             if key:
@@ -453,7 +506,9 @@ class Stage(params.StageParams):
         return stats
 
     @staticmethod
-    def _checkout(out, **kwargs):
+    def _checkout(
+        out: BaseOutput, **kwargs
+    ) -> Tuple[Optional[str], List["PathInfo"]]:
         try:
             result = out.checkout(**kwargs)
             added, modified = result or (None, None)
@@ -464,8 +519,8 @@ class Stage(params.StageParams):
             return "failed", exc.target_infos
 
     @rwlocked(read=["deps", "outs"])
-    def status(self, check_updates=False):
-        ret = []
+    def status(self, check_updates: bool = False) -> Dict[str, list]:
+        ret: list = []
         show_import = self.is_repo_import and check_updates
 
         if not self.frozen or show_import:
@@ -476,7 +531,9 @@ class Stage(params.StageParams):
         return {self.addressing: ret} if ret else {}
 
     @staticmethod
-    def _status(entries):
+    def _status(
+        entries: Union[List["BaseOutput"], List["BaseDependency"]]
+    ) -> Dict[str, str]:
         ret = {}
 
         for entry in entries:
@@ -484,47 +541,49 @@ class Stage(params.StageParams):
 
         return ret
 
-    def _status_deps(self, ret):
+    def _status_deps(self, ret: list) -> None:
         deps_status = self._status(self.deps)
         if deps_status:
             ret.append({"changed deps": deps_status})
 
-    def _status_outs(self, ret):
+    def _status_outs(self, ret: list) -> None:
         outs_status = self._status(self.outs)
         if outs_status:
             ret.append({"changed outs": outs_status})
 
-    def _status_always_changed(self, ret):
+    def _status_always_changed(self, ret: list) -> None:
         if self.is_callback or self.always_changed:
             ret.append("always changed")
 
-    def _status_stage(self, ret):
+    def _status_stage(self, ret: list) -> None:
         if self.changed_stage():
             ret.append("changed checksum")
 
-    def already_cached(self):
+    def already_cached(self) -> bool:
         return (
             not self.changed_stage()
             and self.deps_cached()
             and self.outs_cached()
         )
 
-    def deps_cached(self):
+    def deps_cached(self) -> bool:
         return all(not dep.changed() for dep in self.deps)
 
-    def outs_cached(self):
+    def outs_cached(self) -> bool:
         return all(
             not out.changed_cache() if out.use_cache else not out.changed()
             for out in self.outs
         )
 
-    def get_all_files_number(self, filter_info=None):
+    def get_all_files_number(
+        self, filter_info: Optional["PathInfo"] = None
+    ) -> int:
         return sum(
             out.get_files_number(filter_info)
             for out in self._filter_outs(filter_info)
         )
 
-    def get_used_cache(self, *args, **kwargs):
+    def get_used_cache(self, *args, **kwargs) -> "NamedCache":
         from dvc.cache import NamedCache
 
         cache = NamedCache()
@@ -535,40 +594,40 @@ class Stage(params.StageParams):
 
 
 class PipelineStage(Stage):
-    def __init__(self, *args, name=None, **kwargs):
+    def __init__(self, *args, name=None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.name = name
-        self.cmd_changed = False
+        self.name: str = name
+        self.cmd_changed: bool = False
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return super().__eq__(other) and self.name == other.name
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.path_in_repo, self.name))
 
     @property
-    def addressing(self):
+    def addressing(self) -> str:
         from dvc.dvcfile import PIPELINE_FILE
 
-        if self.path and self.relpath == PIPELINE_FILE:
+        if self.path and self.relpath == PIPELINE_FILE and self.name:
             return self.name
         return f"{super().addressing}:{self.name}"
 
-    def reload(self):
-        return self.dvcfile.stages[self.name]
+    def reload(self) -> "PipelineStage":
+        return self.dvcfile.stages[self.name]  # type: ignore
 
     @property
-    def is_cached(self):
+    def is_cached(self) -> bool:
         return self.name in self.dvcfile.stages and super().is_cached
 
-    def _status_stage(self, ret):
+    def _status_stage(self, ret: list) -> None:
         if self.cmd_changed:
             ret.append("changed command")
 
-    def changed_stage(self):
+    def changed_stage(self) -> bool:
         if self.cmd_changed:
             logger.debug(self._changed_stage_entry())
         return self.cmd_changed
 
-    def _changed_stage_entry(self):
+    def _changed_stage_entry(self) -> str:
         return f"'cmd' of {self} has changed."

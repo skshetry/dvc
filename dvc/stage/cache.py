@@ -1,6 +1,16 @@
+from dvc.types import DictStrAny
 import logging
 import os
 from contextlib import contextmanager
+from typing import (
+    Callable,
+    Generator,
+    Iterator,
+    TYPE_CHECKING,
+    Optional,
+    Tuple,
+    List,
+)
 
 import yaml
 from funcy import first
@@ -15,16 +25,22 @@ from dvc.utils.yaml import dump_yaml
 from .loader import StageLoader
 from .serialize import to_single_stage_lockfile
 
+if TYPE_CHECKING:
+    from . import T, PipelineStage
+    from dvc.repo import Repo
+    from dvc.output.base import BaseOutput
+    from dvc.remote.base import BaseRemoteTree
+
 logger = logging.getLogger(__name__)
 
 
-def _get_cache_hash(cache, key=False):
+def _get_cache_hash(cache: DictStrAny, key: bool = False) -> str:
     if key:
         cache["outs"] = [out["path"] for out in cache.get("outs", [])]
     return dict_sha256(cache)
 
 
-def _get_stage_hash(stage):
+def _get_stage_hash(stage: "T") -> Optional[str]:
     if not (stage.cmd and stage.deps and stage.outs):
         return None
 
@@ -40,22 +56,22 @@ def _get_stage_hash(stage):
 
 
 class StageCache:
-    def __init__(self, repo):
-        self.repo = repo
-        self.cache_dir = os.path.join(repo.cache.local.cache_dir, "runs")
+    def __init__(self, repo: "Repo"):
+        self.repo: "Repo" = repo
+        self.cache_dir: str = os.path.join(repo.cache.local.cache_dir, "runs")
 
-    def _get_cache_dir(self, key):
+    def _get_cache_dir(self, key: str) -> str:
         return os.path.join(self.cache_dir, key[:2], key)
 
-    def _get_cache_path(self, key, value):
+    def _get_cache_path(self, key: str, value: str) -> str:
         return os.path.join(self._get_cache_dir(key), value)
 
-    def _load_cache(self, key, value):
+    def _load_cache(self, key: str, value: str) -> Optional[dict]:
         path = self._get_cache_path(key, value)
 
         try:
             with open(path) as fobj:
-                return COMPILED_LOCK_FILE_STAGE_SCHEMA(yaml.safe_load(fobj))
+                return COMPILED_LOCK_FILE_STAGE_SCHEMA(yaml.safe_load(fobj))  # type: ignore
         except FileNotFoundError:
             return None
         except (yaml.error.YAMLError, Invalid):
@@ -63,7 +79,7 @@ class StageCache:
             os.unlink(path)
             return None
 
-    def _load(self, stage):
+    def _load(self, stage: "T") -> Optional[dict]:
         key = _get_stage_hash(stage)
         if not key:
             return None
@@ -79,7 +95,7 @@ class StageCache:
 
         return None
 
-    def _create_stage(self, cache, wdir=None):
+    def _create_stage(self, cache: dict, wdir: str = None) -> "PipelineStage":
         from . import create_stage, PipelineStage
 
         stage = create_stage(
@@ -91,6 +107,7 @@ class StageCache:
             outs=[out["path"] for out in cache["outs"]],
             external=True,
         )
+        assert stage
         StageLoader.fill_from_lock(stage, cache)
         return stage
 
@@ -103,7 +120,9 @@ class StageCache:
         finally:
             self.repo.cache.local.cache_types = cache_types
 
-    def _uncached_outs(self, stage, cache):
+    def _uncached_outs(
+        self, stage: "T", cache: dict
+    ) -> Iterator["BaseOutput"]:
         # NOTE: using temporary stage to avoid accidentally modifying original
         # stage and to workaround `commit/checkout` not working for uncached
         # outputs.
@@ -119,7 +138,7 @@ class StageCache:
                 if out.def_path in outs_no_cache:
                     yield out
 
-    def save(self, stage):
+    def save(self, stage: "T") -> None:
         cache_key = _get_stage_hash(stage)
         if not cache_key:
             return
@@ -144,10 +163,10 @@ class StageCache:
         makedirs(dpath, exist_ok=True)
         dump_yaml(path, cache)
 
-    def is_cached(self, stage):
+    def is_cached(self, stage: "T"):
         return bool(self._load(stage))
 
-    def restore(self, stage):
+    def restore(self, stage: "T"):
         cache = self._load(stage)
         if not cache:
             return
@@ -157,7 +176,11 @@ class StageCache:
             out.checkout()
 
     @staticmethod
-    def _transfer(func, from_remote, to_remote):
+    def _transfer(
+        func: Callable[[str, str], None],
+        from_remote: "BaseRemoteTree",
+        to_remote: "BaseRemoteTree",
+    ) -> List[Tuple[str, str]]:
         ret = []
 
         runs = from_remote.path_info / "runs"
@@ -176,19 +199,19 @@ class StageCache:
 
         return ret
 
-    def push(self, remote):
-        remote = self.repo.cloud.get_remote(remote)
+    def push(self, remote: str):
+        remote_ = self.repo.cloud.get_remote(remote)
         return self._transfer(
-            _log_exceptions(remote.tree.upload, "upload"),
+            _log_exceptions(remote_.tree.upload, "upload"),
             self.repo.cache.local.tree,
-            remote.tree,
+            remote_.tree,
         )
 
-    def pull(self, remote):
-        remote = self.repo.cloud.get_remote(remote)
+    def pull(self, remote: str):
+        remote_ = self.repo.cloud.get_remote(remote)
         return self._transfer(
-            _log_exceptions(remote.tree.download, "download"),
-            remote.tree,
+            _log_exceptions(remote_.tree.download, "download"),
+            remote_.tree,
             self.repo.cache.local.tree,
         )
 

@@ -119,7 +119,7 @@ def dict_md5(d, **kwargs):
     return dict_hash(d, "md5", **kwargs)
 
 
-def dict_sha256(d, **kwargs):
+def dict_sha256(d, **kwargs) -> str:
     return dict_hash(d, "sha256", **kwargs)
 
 
@@ -329,7 +329,7 @@ def _visual_center(line, width):
     return (left_padding * " ") + line + (right_padding * " ")
 
 
-def relpath(path, start=os.curdir):
+def relpath(path: str, start: str = os.curdir) -> str:
     path = os.fspath(path)
     start = os.path.abspath(os.fspath(start))
 

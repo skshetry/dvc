@@ -2,6 +2,7 @@ import logging
 import os
 from contextlib import contextmanager
 from functools import wraps
+from operator import ge
 
 from funcy import cached_property, cat, first
 
@@ -48,7 +49,7 @@ class Repo:
     from dvc.repo.install import install
     from dvc.repo.add import add
     from dvc.repo.remove import remove
-    from dvc.repo.ls import ls
+    from dvc.repo.ls import ls as _ls
     from dvc.repo.freeze import freeze, unfreeze
     from dvc.repo.move import move
     from dvc.repo.run import run
@@ -64,9 +65,13 @@ class Repo:
     from dvc.repo.commit import commit
     from dvc.repo.diff import diff
     from dvc.repo.brancher import brancher
-    from dvc.repo.get import get
-    from dvc.repo.get_url import get_url
+    from dvc.repo.get import get as _get
+    from dvc.repo.get_url import get_url as _get_url
     from dvc.repo.update import update
+
+    ls = staticmethod(_ls)
+    get = staticmethod(_get)
+    get_url = staticmethod(_get_url)
 
     def __init__(self, root_dir=None, scm=None, rev=None):
         from dvc.state import State, StateNoop

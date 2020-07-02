@@ -1,12 +1,14 @@
 from collections import OrderedDict
 from functools import partial
 from operator import attrgetter
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Dict, Iterable, List, TypeVar, Union
 
 from funcy import post_processing
 
 from dvc.dependency import ParamsDependency
+from dvc.dependency.base import BaseDependency
 from dvc.output import BaseOutput
+from dvc.types import DictStrAny
 from dvc.utils.collections import apply_diff
 from dvc.utils.yaml import parse_yaml_for_update
 
@@ -30,11 +32,23 @@ PARAM_PERSIST = BaseOutput.PARAM_PERSIST
 DEFAULT_PARAMS_FILE = ParamsDependency.DEFAULT_PARAMS_FILE
 
 
-sort_by_path = partial(sorted, key=attrgetter("def_path"))
+FilePath = str
+OutFlags = DictStrAny
+PlotFlags = DictStrAny
+SerializedOutEntry = Union[FilePath, Dict[FilePath, OutFlags]]
+SerializedOutEntries = List[SerializedOutEntry]
+SerializedParamEntry = Union[str, Dict[FilePath, PlotFlags]]
+SerializedParamEntries = List[SerializedParamEntry]
+SerializedParamLockEntries = Dict[FilePath, DictStrAny]
+OutOrDep = TypeVar("OutOrDep", BaseOutput, BaseDependency)
+
+
+def sort_by_path(items: Iterable[OutOrDep]) -> Iterable[OutOrDep]:
+    return sorted(items, key=attrgetter("def_path"))
 
 
 @post_processing(OrderedDict)
-def _get_flags(out):
+def _get_flags(out: BaseOutput):
     if not out.use_cache:
         yield PARAM_CACHE, False
     if out.persist:
@@ -46,13 +60,15 @@ def _get_flags(out):
         yield from out.plot.items()
 
 
-def _serialize_out(out):
-    flags = _get_flags(out)
+def _serialize_out(out: BaseOutput) -> SerializedOutEntry:
+    flags: OutFlags = _get_flags(out)
     return out.def_path if not flags else {out.def_path: flags}
 
 
 def _serialize_outs(outputs: List[BaseOutput]):
-    outs, metrics, plots = [], [], []
+    outs: SerializedOutEntries = []
+    metrics: SerializedOutEntries = []
+    plots: SerializedOutEntries = []
     for out in sort_by_path(outputs):
         bucket = outs
         if out.plot:
@@ -72,7 +88,7 @@ def _serialize_params_keys(params):
     at the first, and then followed by entry of other files in lexicographic
     order. The keys of those custom files are also sorted in the same order.
     """
-    keys = []
+    keys: SerializedParamEntry = []
     for param_dep in sort_by_path(params):
         dump = param_dep.dumpd()
         path, params = dump[PARAM_PATH], dump[PARAM_PARAMS]
@@ -96,7 +112,7 @@ def _serialize_params_values(params: List[ParamsDependency]):
     Default params file are always kept at the start, followed by others in
     alphabetical order. The param values are sorted too(not recursively though)
     """
-    key_vals = OrderedDict()
+    key_vals: SerializedParamLockEntries = OrderedDict()
     for param_dep in sort_by_path(params):
         dump = param_dep.dumpd()
         path, params = dump[PARAM_PATH], dump[PARAM_PARAMS]
@@ -134,27 +150,28 @@ def to_pipeline_file(stage: "PipelineStage"):
 def to_single_stage_lockfile(stage: "Stage") -> dict:
     assert stage.cmd
 
-    res = OrderedDict([("cmd", stage.cmd)])
+    res: DictStrAny = OrderedDict([("cmd", stage.cmd)])
     params, deps = split_params_deps(stage)
-    deps, outs = [
-        [
-            OrderedDict(
-                [
-                    (PARAM_PATH, item.def_path),
-                    (item.checksum_type, item.checksum),
-                ]
-            )
-            for item in sort_by_path(items)
-        ]
-        for items in [deps, stage.outs]
+    s_deps = [
+        OrderedDict(
+            [(PARAM_PATH, item.def_path), (item.checksum_type, item.checksum),]
+        )
+        for item in sort_by_path(deps)
     ]
-    params = _serialize_params_values(params)
-    if deps:
-        res[PARAM_DEPS] = deps
-    if params:
-        res[PARAM_PARAMS] = params
-    if outs:
-        res[PARAM_OUTS] = outs
+    s_outs = [
+        OrderedDict(
+            [(PARAM_PATH, item.def_path), (item.checksum_type, item.checksum),]
+        )
+        for item in sort_by_path(stage.outs)
+    ]
+    s_params = _serialize_params_values(params)
+
+    if s_deps:
+        res[PARAM_DEPS] = s_deps
+    if s_params:
+        res[PARAM_PARAMS] = s_params
+    if s_outs:
+        res[PARAM_OUTS] = s_outs
 
     return res
 
