@@ -1,5 +1,3 @@
-Optimizing ... 
-
 |Banner|
 
 `Website <https://dvc.org>`_
