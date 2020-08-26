@@ -1,4 +1,4 @@
-Banner|
+|Banner|
 
 `Website <https://dvc.org>`_
 • `Docs <https://dvc.org/doc>`_
