@@ -1,6 +1,8 @@
 import os
 
-from dvc.cli import parse_args
+import pytest
+
+from dvc.cli import get_main_parser, parse_args
 from dvc.command.add import CmdAdd
 from dvc.command.base import CmdBase
 from dvc.command.checkout import CmdCheckout
@@ -13,6 +15,7 @@ from dvc.command.repro import CmdRepro
 from dvc.command.run import CmdRun
 from dvc.command.status import CmdDataStatus
 from dvc.exceptions import DvcException, DvcParserError
+from tests import PY39
 from tests.basic_env import TestDvc
 
 
@@ -230,11 +233,21 @@ class TestCd(TestDvc):
         self.assertEqual(parent_dir, current_dir)
 
 
-def test_unknown_command_help(capsys):
+@pytest.mark.skipif(
+    not PY39,
+    reason="exit_on_error for command suggestions requires Python 3.9",
+)
+def test_unknown_command_help(caplog, capsys):
     try:
         _ = parse_args(["unknown"])
     except DvcParserError:
         pass
+    assert (
+        "dvc: 'unknown' is not a dvc command. See 'dvc --help'" in caplog.text
+    )
+
+    parser = get_main_parser()
+    parser.print_help()
     captured = capsys.readouterr()
     output = captured.out
     try:
@@ -261,3 +274,59 @@ def test_unknown_subcommand_help(capsys):
     captured = capsys.readouterr()
     help_output = captured.out
     assert output == help_output
+
+
+@pytest.mark.skipif(
+    not PY39,
+    reason="exit_on_error for command suggestions requires Python 3.9",
+)
+@pytest.mark.parametrize(
+    "typo,suggestion", [("addd", "add"), ("comit", "commit")],
+)
+def test_similar_command_single_suggestion(typo, suggestion, caplog):
+    try:
+        _ = parse_args([typo])
+    except DvcParserError:
+        pass
+    assert f"\n\nThe most similar command is\n\t{suggestion}\n" in caplog.text
+
+
+@pytest.mark.skipif(
+    not PY39,
+    reason="exit_on_error for command suggestions requires Python 3.9",
+)
+def test_similar_command_multiple_suggestions(caplog):
+    try:
+        _ = parse_args(["remot"])
+    except DvcParserError:
+        pass
+    assert "The most similar commands are" in caplog.text
+    assert "remote" in caplog.text
+    assert "remove" in caplog.text
+    assert "root" in caplog.text
+
+
+@pytest.mark.skipif(
+    not PY39,
+    reason="exit_on_error for command suggestions requires Python 3.9",
+)
+def test_similar_subcommand_single_suggestion(caplog):
+    try:
+        _ = parse_args(["remote", "modfiy"])
+    except DvcParserError:
+        pass
+    assert "\n\nThe most similar command is\n\tremote modify\n" in caplog.text
+
+
+@pytest.mark.skipif(
+    not PY39,
+    reason="exit_on_error for command suggestions requires Python 3.9",
+)
+def test_similar_subcommand_multiple_suggestions(caplog):
+    try:
+        _ = parse_args(["plots", "dif"])
+    except DvcParserError:
+        pass
+    assert "The most similar commands are" in caplog.text
+    assert "plots diff" in caplog.text
+    assert "plots modify" in caplog.text
