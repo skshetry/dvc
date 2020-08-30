@@ -1,0 +1,5 @@
+branch: dev
+schedule: "every day"
+search: True
+label_prs: dependencies
+pr_prefix: "bump"
