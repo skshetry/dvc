@@ -176,10 +176,10 @@ class Context(CtxDict):
     @classmethod
     def load_from(cls, tree, imp: str, constants=None) -> "Context":
         d = cls._load_and_select(tree, imp)
-        if constants is not None:
+        if constants is None:
             return cls(d)
         m = cls._make_context(constants, Meta(source=None))
-        m.merge_update(*d)
+        m.merge_update(d)
         return cls(m)
 
     @classmethod

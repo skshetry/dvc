@@ -33,7 +33,7 @@ PARAMS_KWD = "params"
 class DataResolver:
     def __init__(self, repo: "Repo", yaml_wdir: PathInfo, d):
         to_import: PathInfo = yaml_wdir / d.get(USE_KWD, DEFAULT_PARAMS_FILE)
-        vars_ = d.get(VARS_KWD, {})
+        vars_ = d.get(VARS_KWD)
         if os.path.exists(to_import):
             self.global_ctx = Context.load_from(
                 repo.tree, str(to_import), vars_
@@ -109,7 +109,6 @@ class DataResolver:
             if key is not None:
                 c["key"] = key
             suff = key or value
-            assert c
             return self._resolve_stage(c, f"{name}-{suff}", in_data)
 
         if isinstance(iterables, (CtxList, list, tuple)):
