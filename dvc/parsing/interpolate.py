@@ -3,6 +3,8 @@ from collections.abc import Mapping
 
 from funcy import rpartial
 
+from dvc.parsing.context import Context, Value
+
 KEYCRE = re.compile(
     r"""
     (?<!\\)                   # escape \${} or ${{}}
@@ -19,9 +21,12 @@ def _get_matches(template):
     return list(KEYCRE.finditer(template))
 
 
-def _resolve_value(match, context):
+def _resolve_value(match, context: Context):
     _, _, inner = match.groups()
-    return context.select(inner)
+    value = context.select(inner)
+    if isinstance(value, Value):
+        return value.value
+    return value
 
 
 def _str_interpolate(template, matches, context):

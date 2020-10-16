@@ -19,7 +19,7 @@ from dvc.parsing.interpolate import resolve
     "data", [True, 12, pi, None, False, 0, "0", "123", "Foobar", "", inf, 3e4]
 )
 def test_resolve_primitive_values(data, template, var):
-    assert resolve(template, Context({var: data})) == data
+    assert resolve(template, Context.create({var: data})) == data
 
 
 @pytest.mark.parametrize(
@@ -40,14 +40,14 @@ def test_resolve_primitive_values(data, template, var):
     ],
 )
 def test_escape(template, expected, mocker):
-    assert resolve(template, Context({"value": "value"})) == expected
+    assert resolve(template, Context.create({"value": "value"})) == expected
 
 
 def test_resolve_str():
     template = "My name is ${last}, ${first} ${last}"
     expected = "My name is Bond, James Bond"
     assert (
-        resolve(template, Context({"first": "James", "last": "Bond"}))
+        resolve(template, Context.create({"first": "James", "last": "Bond"}))
         == expected
     )
 
