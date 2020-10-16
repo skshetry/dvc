@@ -63,7 +63,7 @@ class DataResolver:
     def resolve(self):
         stages = self.data.get(STAGES_KWD, {})
         data = join(starmap(self._resolve_entry, stages.items()))
-        logger.trace("Resolved dvc.yaml: %s", dumps_yaml(data))
+        logger.trace("Resolved dvc.yaml:\n%s", dumps_yaml(data))
         return {**self.data, STAGES_KWD: data}
 
     def _resolve_stage(self, context: Context, name, definition):
