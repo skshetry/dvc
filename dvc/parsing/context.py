@@ -48,7 +48,10 @@ class Value:
     meta: Optional[Meta] = field(compare=False, default=None, repr=False)
 
     def __repr__(self):
-        return "'" + str(self.value) + "'"
+        return f"'{self}'"
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 class Container:
