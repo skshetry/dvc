@@ -36,5 +36,5 @@ RESOLVED_DVC_YAML_DATA = {
 
 def test_resolver(tmp_dir, dvc):
     resolver = DataResolver(dvc, tmp_dir, TEMPLATED_DVC_YAML_DATA)
-    resolver.global_ctx = Context.create(CONTEXT_DATA)
+    resolver.global_ctx = Context(CONTEXT_DATA)
     assert resolver.resolve() == RESOLVED_DVC_YAML_DATA

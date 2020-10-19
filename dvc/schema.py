@@ -67,7 +67,7 @@ STAGE_DEFINITION = {
 }
 
 FOREACH_IN = {
-    Required(FOREACH_KWD): str,
+    Required(FOREACH_KWD): Any(dict, list, str),
     Optional(SET_KWD): dict,
     Required(IN_KWD): STAGE_DEFINITION,
 }
