@@ -45,13 +45,52 @@ class Meta:
 @dataclass
 class Value:
     value: Any
-    meta: Optional[Meta] = field(compare=False, default=None, repr=False)
+    meta: Meta = field(compare=False, repr=False)
 
     def __repr__(self):
         return f"'{self}'"
 
     def __str__(self) -> str:
         return str(self.value)
+
+    def get_sources(self):
+        return {self.meta.source: self.meta.path()}
+
+
+class String:
+    """
+    Wrapper around string, that can interpolate, and keep the
+    original source of those interpolations.
+    """
+
+    def __init__(self, template, matches, context):
+
+        from .interpolate import _resolve_value
+
+        index, buf = 0, ""
+        self.meta = defaultdict(set)
+        for match in matches:
+            start, end = match.span(0)
+            val = _resolve_value(match, context)
+            self._add_source(val)
+            buf += template[index:start] + str(val)
+            index = end
+        value = buf + template[index:]
+        self.value = value.replace(r"\${", "${")
+
+    def __repr__(self) -> str:
+        return str(self.value)
+
+    def _add_source(self, val: Union[Value, "String"]):
+        # string might have been built from multiple sources
+        if isinstance(val, Value) and val.meta and val.meta.source:
+            self.meta[val.meta.source].add(val.meta.path())
+        if isinstance(val, String) and val.meta:
+            for source, keys in self.meta.items():
+                self.meta[source].update(keys)
+
+    def get_sources(self):
+        return self.meta
 
 
 class Container:
@@ -66,7 +105,7 @@ class Container:
         meta = Meta.update_path(self.meta, key)
         if value is None or isinstance(value, (int, float, str, bytes, bool)):
             return Value(value, meta=meta)
-        elif isinstance(value, (CtxList, CtxDict, Value)):
+        elif isinstance(value, (CtxList, CtxDict, Value, String)):
             return value
         elif isinstance(value, (list, dict)):
             container = CtxDict if isinstance(value, dict) else CtxList
@@ -108,6 +147,9 @@ class Container:
             ) from exc
         return d.select(rems[0]) if rems else d
 
+    def get_sources(self):
+        return {}
+
 
 class CtxList(Container, MutableSequence):
     _key_transform = staticmethod(int)
@@ -119,6 +161,9 @@ class CtxList(Container, MutableSequence):
 
     def insert(self, index: int, value):
         self.data.insert(index, self._convert(index, value))
+
+    def get_sources(self):
+        return {self.meta.source: self.meta.path()}
 
 
 class CtxDict(Container, MutableMapping):
@@ -158,10 +203,15 @@ class Context(CtxDict):
         self._track = False
 
     def _track_data(self, node):
-        if isinstance(node, (Value, CtxList)):
-            meta = node.meta
-            if meta and meta.source and self._track:
-                self._tracked_data[meta.source].add(meta.path())
+        if not self._track:
+            return
+
+        for source, keys in node.get_sources().items():
+            if not source:
+                continue
+            params_file = self._tracked_data[source]
+            keys = [keys] if isinstance(keys, str) else keys
+            params_file.update(keys)
 
     @property
     def tracked(self):

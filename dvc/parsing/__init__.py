@@ -69,9 +69,7 @@ class DataResolver:
     def resolve(self):
         stages = self.data.get(STAGES_KWD, {})
         data = join(starmap(self._resolve_entry, stages.items()))
-        logger.trace(  # pytype: disable=attribute-error
-            "Resolved dvc.yaml:\n%s", dumps_yaml(data)
-        )
+        logger.trace("Resolved dvc.yaml:\n%s", dumps_yaml(data))
         return {STAGES_KWD: data}
 
     def _resolve_stage(self, context: Context, name: str, definition) -> dict:
@@ -108,8 +106,9 @@ class DataResolver:
         logger.trace(  # pytype: disable=attribute-error
             "Context during resolution of stage %s:\n%s", name, context
         )
+
         with context.track():
-            stage_d = resolve(definition, context)
+            stage_d = resolve(definition, context, unwrap=True)
 
         params = stage_d.get(PARAMS_KWD, []) + context.tracked
 

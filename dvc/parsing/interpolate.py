@@ -3,7 +3,7 @@ from collections.abc import Mapping
 
 from funcy import rpartial
 
-from dvc.parsing.context import Context, Value
+from dvc.parsing.context import Context, String, Value
 
 KEYCRE = re.compile(
     r"""
@@ -16,6 +16,8 @@ KEYCRE = re.compile(
     re.VERBOSE,
 )
 
+UNWRAP_DEFAULT = False
+
 
 def _get_matches(template):
     return list(KEYCRE.finditer(template))
@@ -24,43 +26,34 @@ def _get_matches(template):
 def _resolve_value(match, context: Context):
     _, _, inner = match.groups()
     value = context.select(inner)
-    if isinstance(value, Value):
+    return value
+
+
+def _unwrap(value):
+    if isinstance(value, (Value, String)):
         return value.value
     return value
 
 
-def _str_interpolate(template, matches, context):
-    index, buf = 0, ""
-    for match in matches:
-        start, end = match.span(0)
-        buf += template[index:start] + str(_resolve_value(match, context))
-        index = end
-    return buf + template[index:]
-
-
-def _resolve_str(src: str, context):
+def _resolve_str(src: str, context, unwrap=UNWRAP_DEFAULT):
     matches = _get_matches(src)
     if len(matches) == 1 and src == matches[0].group(0):
         # replace "${enabled}", if `enabled` is a boolean, with it's actual
         # value rather than it's string counterparts.
-        return _resolve_value(matches[0], context)
-    elif matches:
-        # but not "${num} days"
-        src = _str_interpolate(src, matches, context)
-
-    # regex already backtracks and avoids any `${` starting with
-    # backslashes(`\`). We just need to replace those by `${`.
-    return src.replace(r"\${", "${")
+        value = _resolve_value(matches[0], context)
+    else:
+        value = String(src, matches, context)
+    return _unwrap(value) if unwrap else value
 
 
-def resolve(src, context):
+def resolve(src, context, unwrap=UNWRAP_DEFAULT):
     Seq = (list, tuple, set)
 
-    apply_value = rpartial(resolve, context)
+    apply_value = rpartial(resolve, context, unwrap=unwrap)
     if isinstance(src, Mapping):
         return {key: apply_value(value) for key, value in src.items()}
     elif isinstance(src, Seq):
         return type(src)(map(apply_value, src))
     elif isinstance(src, str):
-        return _resolve_str(src, context)
+        return _resolve_str(src, context, unwrap=unwrap)
     return src
