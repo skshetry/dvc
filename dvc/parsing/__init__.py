@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from itertools import starmap
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from funcy import first, join
 
@@ -12,13 +12,6 @@ from dvc.dependency.param import ParamsDependency
 from dvc.path_info import PathInfo
 
 from .context import Context
-from .interpolate import (
-    _get_matches,
-    _is_exact_string,
-    _is_interpolated_string,
-    _resolve_str,
-    resolve,
-)
 
 if TYPE_CHECKING:
     from dvc.repo import Repo
@@ -36,7 +29,6 @@ IN_KWD = "in"
 SET_KWD = "set"
 
 DEFAULT_SENTINEL = object()
-SeqOrMap = Union[Sequence, Mapping]
 
 
 class DataResolver:
@@ -63,8 +55,8 @@ class DataResolver:
     def _resolve_entry(self, name: str, definition):
         context = Context.clone(self.global_ctx)
         if FOREACH_KWD in definition:
-            self.set_context_from(context, definition.get(SET_KWD, {}))
             assert IN_KWD in definition
+            context.set(definition.get(SET_KWD, {}))
             return self._foreach(
                 context, name, definition[FOREACH_KWD], definition[IN_KWD]
             )
@@ -73,12 +65,14 @@ class DataResolver:
     def resolve(self):
         stages = self.data.get(STAGES_KWD, {})
         data = join(starmap(self._resolve_entry, stages.items()))
-        logger.trace("Resolved dvc.yaml:\n%s", data)
+        logger.trace(  # pytype: disable=attribute-error
+            "Resolved dvc.yaml:\n%s", data
+        )
         return {STAGES_KWD: data}
 
     def _resolve_stage(self, context: Context, name: str, definition) -> dict:
         definition = deepcopy(definition)
-        self.set_context_from(context, definition.pop(SET_KWD, {}))
+        context.set(definition.pop(SET_KWD, {}))
         wdir = self._resolve_wdir(context, definition.get(WDIR_KWD))
         if self.wdir != wdir:
             logger.debug(
@@ -111,7 +105,7 @@ class DataResolver:
         )
 
         with context.track():
-            stage_d = resolve(definition, context)
+            stage_d = context.format(definition)
 
         params = stage_d.get(PARAMS_KWD, []) + self._resolve_params(
             context, wdir
@@ -131,7 +125,7 @@ class DataResolver:
     def _resolve_wdir(self, context: Context, wdir: str = None) -> PathInfo:
         if not wdir:
             return self.wdir
-        wdir = resolve(wdir, context)
+        wdir = context.format_string(wdir)
         return self.wdir / str(wdir)
 
     def _foreach(self, context: Context, name: str, foreach_data, in_data):
@@ -143,8 +137,7 @@ class DataResolver:
             suffix = str(key if key is not DEFAULT_SENTINEL else value)
             return self._resolve_stage(c, f"{name}-{suffix}", in_data)
 
-        iterable = resolve(foreach_data, context)
-
+        iterable = context.format(foreach_data)
         assert isinstance(iterable, (Sequence, Mapping)) and not isinstance(
             iterable, str
         ), f"got type of {type(iterable)}"
@@ -153,47 +146,3 @@ class DataResolver:
         else:
             gen = (each_iter(v, k) for k, v in iterable.items())
         return join(gen)
-
-    @classmethod
-    def set_context_from(cls, context: Context, to_set):
-        for key, value in to_set.items():
-            if key in context:
-                raise ValueError(f"Cannot set '{key}', key already exists")
-            if isinstance(value, str):
-                cls._check_joined_with_interpolation(key, value)
-                value = _resolve_str(value, context, unwrap=False)
-            elif isinstance(value, (Sequence, Mapping)):
-                cls._check_nested_collection(key, value)
-                cls._check_interpolation_collection(key, value)
-            context[key] = value
-
-    @staticmethod
-    def _check_nested_collection(key: str, value: SeqOrMap):
-        values = value.values() if isinstance(value, Mapping) else value
-        has_nested = any(
-            not isinstance(item, str) and isinstance(item, (Mapping, Sequence))
-            for item in values
-        )
-        if has_nested:
-            raise ValueError(f"Cannot set '{key}', has nested dict/list")
-
-    @staticmethod
-    def _check_interpolation_collection(key: str, value: SeqOrMap):
-        values = value.values() if isinstance(value, Mapping) else value
-        interpolated = any(_is_interpolated_string(item) for item in values)
-        if interpolated:
-            raise ValueError(
-                f"Cannot set '{key}', "
-                "having interpolation inside "
-                f"'{type(value).__name__}' is not supported."
-            )
-
-    @staticmethod
-    def _check_joined_with_interpolation(key: str, value: str):
-        matches = _get_matches(value)
-        if matches and not _is_exact_string(value, matches):
-            raise ValueError(
-                f"Cannot set '{key}', "
-                "joining string with interpolated string"
-                "is not supported"
-            )

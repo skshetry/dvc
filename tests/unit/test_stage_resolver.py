@@ -57,8 +57,7 @@ def test_set():
         "lst2": [1, 2, 3],
         "dct2": {"foo": "bar", "foobar": "foobar"},
     }
-    DataResolver.set_context_from(context, to_set)
-
+    context.set(to_set)
     for key, value in to_set.items():
         # FIXME: using for convenience, figure out better way to do it
         assert context[key] == context._convert(key, value)
@@ -76,7 +75,7 @@ def test_set():
 def test_set_nested_coll(coll):
     context = Context(CONTEXT_DATA)
     with pytest.raises(ValueError, match="Cannot set 'item', has nested"):
-        DataResolver.set_context_from(context, {"thresh": 10, "item": coll})
+        context.set({"thresh": 10, "item": coll})
 
 
 def test_set_already_exists():
@@ -84,7 +83,7 @@ def test_set_already_exists():
     with pytest.raises(
         ValueError, match="Cannot set 'item', key already exists"
     ):
-        DataResolver.set_context_from(context, {"item": "bar"})
+        context.set({"item": "bar"})
 
     assert context["item"] == Value("foo")
 
@@ -97,13 +96,12 @@ def test_set_collection_interpolation(coll):
     with pytest.raises(
         ValueError, match="Cannot set 'item', having interpolation inside"
     ):
-        DataResolver.set_context_from(context, {"thresh": 10, "item": coll})
+        context.set({"thresh": 10, "item": coll})
 
 
 def test_set_interpolated_string():
     context = Context(CONTEXT_DATA)
-    DataResolver.set_context_from(
-        context,
+    context.set(
         {
             "foo": "${dict.foo}",
             "bar": "${dict.bar}",
@@ -126,8 +124,7 @@ def test_set_interpolated_string():
 
 def test_set_ladder():
     context = Context(CONTEXT_DATA)
-    DataResolver.set_context_from(
-        context,
+    context.set(
         {
             "item": 5,
             "foo": "${dict.foo}",
@@ -172,4 +169,4 @@ def test_set_multiple_interpolations(value):
         ValueError,
         match=r"Cannot set 'item', joining string with interpolated string",
     ):
-        DataResolver.set_context_from(context, {"thresh": 10, "item": value})
+        context.set({"thresh": 10, "item": value})

@@ -1,3 +1,9 @@
+from dvc.parsing.interpolate import (
+    _get_expr_from_match,
+    _get_matches,
+    _is_exact_string,
+    _is_interpolated_string,
+)
 import os
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping, MutableSequence
@@ -9,6 +15,8 @@ from typing import Any, List, Optional, Sequence, Union
 from funcy import identity
 
 from dvc.utils.serialize import LOADERS
+
+SeqOrMap = Union[Sequence, Mapping]
 
 
 def _merge(into, update, overwrite):
@@ -46,8 +54,13 @@ def _default_meta():
     return Meta(source=None)
 
 
+class Node:
+    def get_sources(self):
+        raise NotImplementedError
+
+
 @dataclass
-class Value:
+class Value(Node):
     value: Any
     meta: Meta = field(
         compare=False, default_factory=_default_meta, repr=False
@@ -63,7 +76,10 @@ class Value:
         return {self.meta.source: self.meta.path()}
 
 
-class Container:
+PRIMITIVES = (int, float, str, bytes, bool)
+
+
+class Container(Node):
     meta: Meta
     data: Union[list, dict]
     _key_transform = staticmethod(identity)
@@ -73,9 +89,9 @@ class Container:
 
     def _convert(self, key, value):
         meta = Meta.update_path(self.meta, key)
-        if value is None or isinstance(value, (int, float, str, bytes, bool)):
+        if value is None or isinstance(value, PRIMITIVES):
             return Value(value, meta=meta)
-        elif isinstance(value, (CtxList, CtxDict, Value)):
+        elif isinstance(value, Node):
             return value
         elif isinstance(value, (list, dict)):
             container = CtxDict if isinstance(value, dict) else CtxList
@@ -116,7 +132,7 @@ class Container:
         index = index.strip()
         index = self._key_transform(index)
         try:
-            d = self.data[index]
+            d = self[index]
         except LookupError as exc:
             raise ValueError(
                 f"Could not find '{index}' in {self.data}"
@@ -163,6 +179,11 @@ class CtxDict(Container, MutableMapping):
             _merge(self.data, d, overwrite=overwrite)
 
 
+ESC_BRACE_OPEN = r"\${"
+BRACE_OPEN = "${"
+UNWRAP_DEFAULT = True
+
+
 class Context(CtxDict):
     def __init__(self, *args, **kwargs):
         """
@@ -193,10 +214,13 @@ class Context(CtxDict):
     def tracked(self):
         return self._tracked_data
 
-    def select(self, key: str):
+    def select(self, key: str, unwrap=False):
         node = super().select(key)
         self._track_data(node)
-        return node
+        return self._unwrap(node) if unwrap else node
+
+    def _unwrap(self, node: Node):
+        return node.value if isinstance(node, Value) else node
 
     @classmethod
     def load_from(cls, tree, file: str) -> "Context":
@@ -210,3 +234,86 @@ class Context(CtxDict):
     def clone(cls, ctx: "Context") -> "Context":
         """Clones given context."""
         return cls(deepcopy(ctx.data))
+
+    def _interpolate_string(self, s: str):
+        matches = _get_matches(s)
+        index, buf = 0, ""
+        for match in matches:
+            start, end = match.span(0)
+            inner = _get_expr_from_match(match)
+            buf += s[index:start] + str(self.select(inner))
+            index = end
+        return buf + s[index:]
+
+    def format_string(self, s: str, unwrap=UNWRAP_DEFAULT):
+        if not isinstance(s, str):
+            return s
+
+        matches = _get_matches(s)
+
+        if _is_exact_string(s, matches):
+            # replace "${enabled}", if `enabled` is a boolean, with it's actual
+            # value rather than it's string counterparts.
+            inner = _get_expr_from_match(matches[0])
+            return self.select(inner, unwrap=unwrap)
+
+        # but not "${num} days"
+        s = self._interpolate_string(s)
+        # regex already backtracks and avoids any `${` starting with
+        # backslashes(`\`). We just need to replace those by `${`.
+        return s.replace(ESC_BRACE_OPEN, BRACE_OPEN)
+
+    def format(self, value):
+        if isinstance(value, str):
+            return self.format_string(value)
+        if isinstance(value, Mapping):
+            return type(value)(
+                (self.format_string(k), self.format(v))
+                for k, v in value.items()
+            )
+        if isinstance(value, (list, tuple, set)):
+            return type(value)(self.format(k) for k in value)
+        return value
+
+    def set(self, to_set):
+        for key, value in to_set.items():
+            if key in self:
+                raise ValueError(f"Cannot set '{key}', key already exists")
+            if isinstance(value, str):
+                self._check_joined_with_interpolation(key, value)
+                value = self.format_string(value, unwrap=False)
+            elif isinstance(value, (Sequence, Mapping)):
+                self._check_nested_collection(key, value)
+                self._check_interpolation_collection(key, value)
+            self[key] = value
+
+    @staticmethod
+    def _check_nested_collection(key: str, value: SeqOrMap):
+        values = value.values() if isinstance(value, Mapping) else value
+        has_nested = any(
+            not isinstance(item, str) and isinstance(item, (Mapping, Sequence))
+            for item in values
+        )
+        if has_nested:
+            raise ValueError(f"Cannot set '{key}', has nested dict/list")
+
+    @staticmethod
+    def _check_interpolation_collection(key: str, value: SeqOrMap):
+        values = value.values() if isinstance(value, Mapping) else value
+        interpolated = any(_is_interpolated_string(item) for item in values)
+        if interpolated:
+            raise ValueError(
+                f"Cannot set '{key}', "
+                "having interpolation inside "
+                f"'{type(value).__name__}' is not supported."
+            )
+
+    @staticmethod
+    def _check_joined_with_interpolation(key: str, value: str):
+        matches = _get_matches(value)
+        if matches and not _is_exact_string(value, matches):
+            raise ValueError(
+                f"Cannot set '{key}', "
+                "joining string with interpolated string"
+                "is not supported"
+            )
