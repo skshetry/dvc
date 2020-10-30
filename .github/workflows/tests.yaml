@@ -66,3 +66,14 @@ jobs:
       with:
         file: ./coverage.xml
         fail_ci_if_error: true
+    - name: Post TAP
+      # Running custom one that with an option, that does not fail CI on error
+      uses: skshetry/flaky-service/packages/action@v1.0.3
+      if: ${{ always() }}
+      with:
+        file-path: ${{github.workspace}}/testresults.tap
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        os: ${{runner.os}}
+        matrix: ${{toJson(matrix)}}
+        repo-description: ${{github.event.repository.description}}
+        fail_ci_if_error: false
