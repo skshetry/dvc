@@ -68,7 +68,7 @@ jobs:
         fail_ci_if_error: true
     - name: Post TAP
       # Running custom one that with an option, that does not fail CI on error
-      uses: skshetry/flaky-service/packages/action@v1.0.3
+      uses: skshetry/flaky-service/packages/action@master
       if: ${{ always() }}
       with:
         file-path: ${{github.workspace}}/testresults.tap
