@@ -1,2 +1,2 @@
 PyInstaller==3.5
-psutil
+psutil==5.7.3
