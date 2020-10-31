@@ -1,17 +1,32 @@
+from abc import ABC
+from dvc.tree.base import BaseTree
 import os
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping, MutableSequence
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
-from typing import Any, List, Optional, Sequence, Union
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Sized,
+    TypeVar,
+    Union,
+    overload,
+)
 
 from funcy import identity
 
 from dvc.utils.serialize import LOADERS
 
 
-def _merge(into, update, overwrite):
+def _merge(into: MutableMapping, update: Mapping, overwrite: bool):
     for key, val in update.items():
         if isinstance(into.get(key), Mapping) and isinstance(val, Mapping):
             _merge(into[key], val, overwrite)
@@ -46,8 +61,13 @@ def _default_meta():
     return Meta(source=None)
 
 
+class Node:
+    def get_sources(self):
+        raise NotImplementedError
+
+
 @dataclass
-class Value:
+class Value(Node):
     value: Any
     meta: Meta = field(
         compare=False, default_factory=_default_meta, repr=False
@@ -63,19 +83,22 @@ class Value:
         return {self.meta.source: self.meta.path()}
 
 
-class Container:
+PRIMITIVES = (int, float, str, bytes, bool)
+
+
+class Container(Node, ABC):
     meta: Meta
-    data: Union[list, dict]
     _key_transform = staticmethod(identity)
+    data: Union[Mapping[str, Node], Sequence[Node]]
 
     def __init__(self, meta) -> None:
         self.meta = meta or Meta(source=None)
 
-    def _convert(self, key, value):
+    def _convert(self, key, value) -> Node:
         meta = Meta.update_path(self.meta, key)
-        if value is None or isinstance(value, (int, float, str, bytes, bool)):
+        if value is None or isinstance(value, PRIMITIVES):
             return Value(value, meta=meta)
-        elif isinstance(value, (CtxList, CtxDict, Value)):
+        elif isinstance(value, Node):
             return value
         elif isinstance(value, (list, dict)):
             container = CtxDict if isinstance(value, dict) else CtxList
@@ -87,19 +110,10 @@ class Container:
             )
             raise TypeError(msg)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.data)
 
-    def __getitem__(self, key):
-        return self.data[key]
-
-    def __setitem__(self, key, value):
-        self.data[key] = self._convert(key, value)
-
-    def __delitem__(self, key):
-        del self.data[key]
-
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data)
 
     def __iter__(self):
@@ -111,12 +125,15 @@ class Container:
             return o.data == self.data
         return container(o) == self
 
+    def __getitem__(self, key: Any):
+        raise NotImplementedError
+
     def select(self, key: str):
         index, *rems = key.split(sep=".", maxsplit=1)
         index = index.strip()
         index = self._key_transform(index)
         try:
-            d = self.data[index]
+            d = self[index]
         except LookupError as exc:
             raise ValueError(
                 f"Could not find '{index}' in {self.data}"
@@ -127,12 +144,12 @@ class Container:
         return {}
 
 
-class CtxList(Container, MutableSequence):
+class CtxList(Container, MutableSequence[Node]):
     _key_transform = staticmethod(int)
 
     def __init__(self, values: Sequence, meta: Meta = None):
         super().__init__(meta=meta)
-        self.data: list = []
+        self.data: List[Node] = []
         self.extend(values)
 
     def insert(self, index: int, value):
@@ -141,26 +158,48 @@ class CtxList(Container, MutableSequence):
     def get_sources(self):
         return {self.meta.source: self.meta.path()}
 
+    def __getitem__(self, key: Union[int, slice]):
+        return self.data[key]
+
+    def __setitem__(self, key: Union[int, slice], value) -> None:
+        if isinstance(key, slice):
+            self.data[value] = [
+                self._convert(key, value)
+                for key, value in zip(
+                    range(slice.start, slice.stop, slice.step), value
+                )
+            ]
+        else:
+            self.data[key] = self._convert(key, value)
+
+    def __delitem__(self, key: Union[int, slice]):
+        del self.data[key]
+
 
 class CtxDict(Container, MutableMapping):
     def __init__(self, mapping: Mapping = None, meta: Meta = None, **kwargs):
         super().__init__(meta=meta)
-
-        self.data: dict = {}
+        self.data: Dict[str, Node] = {}
         if mapping:
             self.update(mapping)
         self.update(kwargs)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value):
         if not isinstance(key, str):
             # limitation for the interpolation
             # ignore other kinds of keys
             return
-        return super().__setitem__(key, value)
+        self.data[key] = self._convert(key, value)
 
-    def merge_update(self, *args, overwrite=False):
+    def merge_update(self, *args: Mapping, overwrite=False):
         for d in args:
             _merge(self.data, d, overwrite=overwrite)
+
+    def __getitem__(self, key: str):
+        return self.data[key]
+
+    def __delitem__(self, key: str):
+        del self.data[key]
 
 
 class Context(CtxDict):
@@ -178,7 +217,7 @@ class Context(CtxDict):
         yield
         self._track = False
 
-    def _track_data(self, node):
+    def _track_data(self, node: Node):
         if not self._track:
             return
 
@@ -199,7 +238,7 @@ class Context(CtxDict):
         return node
 
     @classmethod
-    def load_from(cls, tree, file: str) -> "Context":
+    def load_from(cls, tree: BaseTree, file: str) -> "Context":
         _, ext = os.path.splitext(file)
         loader = LOADERS[ext]
 

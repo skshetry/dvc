@@ -58,7 +58,7 @@ def collect(
     repo: Repo,
     deps: bool = False,
     targets: Iterable = None,
-    output_filter: callable = None,
+    output_filter: Callable = None,
     rev: str = None,
     recursive: bool = False,
 ):

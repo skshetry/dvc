@@ -1,13 +1,14 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 HASH_DIR_SUFFIX = ".dir"
 
 
 @dataclass
 class HashInfo:
-    name: str
-    value: str
-    dir_info: dict = field(default=None, compare=False)
+    name: Optional[str]
+    value: Optional[str]
+    dir_info: Optional[dict] = field(default=None, compare=False)
 
     def __bool__(self):
         return bool(self.value)

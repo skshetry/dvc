@@ -18,9 +18,14 @@ from dvc.path_info import PathInfo
 from dvc.tree.repo import RepoTree
 from dvc.utils.fs import path_isin
 
+from typing import TYPE_CHECKING
+
 from ..stage.exceptions import StageFileDoesNotExistError, StageNotFound
 from ..utils import parse_target
 from .graph import check_acyclic, get_pipeline, get_pipelines
+
+if TYPE_CHECKING:
+    from dvc.tree.base import BaseTree
 
 logger = logging.getLogger(__name__)
 
@@ -165,12 +170,12 @@ class Repo:
         return self._scm if self._scm else SCM(self.root_dir, no_scm=no_scm)
 
     @property
-    def tree(self):
+    def tree(self) -> "BaseTree":
         return self._tree
 
     @tree.setter
-    def tree(self, tree):
-        self._tree = tree
+    def tree(self, tree: "BaseTree"):
+        self._tree: "BaseTree" = tree
         # Our graph cache is no longer valid, as it was based on the previous
         # tree.
         self._reset()

@@ -2,6 +2,7 @@ import json
 import logging
 from copy import copy
 from operator import itemgetter
+from typing import Optional, ClassVar
 
 from funcy import decorator
 from shortuuid import uuid
@@ -16,7 +17,7 @@ from dvc.exceptions import (
 from dvc.hash_info import HashInfo
 from dvc.path_info import WindowsPathInfo
 from dvc.progress import Tqdm
-from dvc.remote.slow_link_detection import slow_link_guard
+from dvc.remote.slow_link_detection import slow_link_guard  # type: ignore [attr-defined]
 
 from ..tree.base import RemoteActionNotImplemented
 
@@ -54,7 +55,7 @@ class CloudCache:
     """Cloud cache class."""
 
     DEFAULT_CACHE_TYPES = ["copy"]
-    CACHE_MODE = None
+    CACHE_MODE: ClassVar[Optional[int]] = None
 
     def __init__(self, tree):
         self.tree = tree

@@ -254,8 +254,6 @@ class CloudURLInfo(URLInfo):
 
 
 class HTTPURLInfo(URLInfo):
-    __hash__ = URLInfo.__hash__
-
     def __init__(self, url):
         p = urlparse(url)
         stripped = p._replace(params=None, query=None, fragment=None)

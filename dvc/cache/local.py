@@ -3,6 +3,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial, wraps
+from typing import ClassVar
 
 from funcy import cached_property, concat
 

@@ -1,9 +1,10 @@
 import re
 from collections.abc import Mapping
+from typing import List, Match
 
 from funcy import rpartial
 
-from dvc.parsing.context import Context, Value
+from dvc.parsing.context import Context, Node, Value
 
 KEYCRE = re.compile(
     r"""
@@ -23,23 +24,23 @@ def _get_matches(template: str):
     return list(KEYCRE.finditer(template))
 
 
-def _is_interpolated_string(val):
+def _is_interpolated_string(val: str):
     return bool(_get_matches(val)) if isinstance(val, str) else False
 
 
-def _unwrap(value):
+def _unwrap(value: Node):
     if isinstance(value, Value):
         return value.value
     return value
 
 
-def _resolve_value(match, context: Context, unwrap=UNWRAP_DEFAULT):
+def _resolve_value(match, context: Context, unwrap: bool = UNWRAP_DEFAULT):
     _, _, inner = match.groups()
     value = context.select(inner)
     return _unwrap(value) if unwrap else value
 
 
-def _str_interpolate(template, matches, context):
+def _str_interpolate(template: str, matches: List[Match], context: Context):
     index, buf = 0, ""
     for match in matches:
         start, end = match.span(0)
@@ -48,11 +49,11 @@ def _str_interpolate(template, matches, context):
     return buf + template[index:]
 
 
-def _is_exact_string(src: str, matches):
+def _is_exact_string(src: str, matches: List[Match]):
     return len(matches) == 1 and src == matches[0].group(0)
 
 
-def _resolve_str(src: str, context, unwrap=UNWRAP_DEFAULT):
+def _resolve_str(src: str, context: Context, unwrap: bool = UNWRAP_DEFAULT):
     matches = _get_matches(src)
     if _is_exact_string(src, matches):
         # replace "${enabled}", if `enabled` is a boolean, with it's actual
@@ -66,7 +67,7 @@ def _resolve_str(src: str, context, unwrap=UNWRAP_DEFAULT):
     return src.replace(r"\${", "${")
 
 
-def resolve(src, context):
+def resolve(src, context: Context):
     Seq = (list, tuple, set)
 
     apply_value = rpartial(resolve, context)

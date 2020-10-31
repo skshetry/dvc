@@ -4,7 +4,7 @@ import stat
 import threading
 from contextlib import suppress
 from itertools import takewhile
-from typing import TYPE_CHECKING, Callable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Optional, Tuple, Union, cast
 
 from funcy import lfilter, wrap_with
 from pygtrie import StringTrie
@@ -51,14 +51,14 @@ class RepoTree(BaseTree):  # pylint:disable=abstract-method
     ):
         super().__init__(repo, {"url": repo.root_dir})
 
-        if not repo_factory:
+        if repo_factory:
+            self.repo_factory = repo_factory
+        else:
             from dvc.repo import Repo
 
-            self.repo_factory = Repo
-        else:
-            self.repo_factory = repo_factory
+            self.repo_factory = Repo  # type: ignore
 
-        self._main_repo = repo
+        self._main_repo: "Repo" = repo
         self.root_dir = repo.root_dir
         self._traverse_subrepos = subrepos
 
@@ -120,9 +120,7 @@ class RepoTree(BaseTree):  # pylint:disable=abstract-method
         # dvcignore will ignore subrepos, therefore using `use_dvcignore=False`
         return self._main_repo.tree.isdir(repo_path, use_dvcignore=False)
 
-    def _get_tree_pair(
-        self, path
-    ) -> Tuple[Union["GitTree", "LocalTree"], DvcTree]:
+    def _get_tree_pair(self, path) -> Tuple[BaseTree, Optional[DvcTree]]:
         """
         Returns a pair of trees based on repo the path falls in, using prefix.
         """
@@ -130,7 +128,7 @@ class RepoTree(BaseTree):  # pylint:disable=abstract-method
 
         # fallback to the top-level repo if repo was not found
         # this can happen if the path is outside of the repo
-        repo = self._get_repo(path) or self._main_repo
+        repo: "Repo" = self._get_repo(path) or self._main_repo
 
         dvc_tree = self._dvctrees.get(repo.root_dir)
         return repo.tree, dvc_tree

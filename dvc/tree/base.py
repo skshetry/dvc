@@ -3,6 +3,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from multiprocessing import cpu_count
+from typing import ClassVar, Dict, Optional, Union, Any
 from urllib.parse import urlparse
 
 from funcy import cached_property, decorator
@@ -10,7 +11,7 @@ from funcy import cached_property, decorator
 from dvc.exceptions import DvcException, DvcIgnoreInCollectedDirError
 from dvc.hash_info import HashInfo
 from dvc.ignore import DvcIgnore
-from dvc.path_info import URLInfo
+from dvc.path_info import PathInfo, URLInfo
 from dvc.progress import Tqdm
 from dvc.state import StateNoop
 from dvc.utils import tmp_fname
@@ -47,8 +48,8 @@ def use_state(call):
 
 class BaseTree:
     scheme = "base"
-    REQUIRES = {}
-    PATH_CLS = URLInfo
+    REQUIRES: ClassVar[Dict[str, str]] = {}
+    PATH_CLS: ClassVar[Any] = URLInfo
     JOBS = 4 * cpu_count()
 
     PARAM_RELPATH = "relpath"
@@ -61,9 +62,9 @@ class BaseTree:
     TRAVERSE_THRESHOLD_SIZE = 500000
     CAN_TRAVERSE = True
 
-    CACHE_MODE = None
-    SHARED_MODE_MAP = {None: (None, None), "group": (None, None)}
-    PARAM_CHECKSUM = None
+    CACHE_MODE: Optional[int] = None
+    SHARED_MODE_MAP: dict = {None: (None, None), "group": (None, None)}
+    PARAM_CHECKSUM: ClassVar[Optional[str]] = None
 
     state = StateNoop()
 

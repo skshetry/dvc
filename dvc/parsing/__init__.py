@@ -4,7 +4,8 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from itertools import starmap
-from typing import TYPE_CHECKING, Union
+from pathlib import Path
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 
 from funcy import first, join
 
@@ -45,7 +46,7 @@ class DataResolver:
         vars_ = d.get(VARS_KWD, {})
         vars_ctx = Context(vars_)
         if os.path.exists(to_import):
-            self.global_ctx_source = to_import
+            self.global_ctx_source: Optional[PathInfo] = to_import
             self.global_ctx = Context.load_from(repo.tree, str(to_import))
         else:
             self.global_ctx = Context()
@@ -60,7 +61,7 @@ class DataResolver:
         self.wdir = wdir
         self.repo = repo
 
-    def _resolve_entry(self, name: str, definition):
+    def _resolve_entry(self, name: str, definition: Dict[str, Any]):
         context = Context.clone(self.global_ctx)
         if FOREACH_KWD in definition:
             self.set_context_from(context, definition.get(SET_KWD, {}))
@@ -76,7 +77,9 @@ class DataResolver:
         logger.trace("Resolved dvc.yaml:\n%s", data)
         return {STAGES_KWD: data}
 
-    def _resolve_stage(self, context: Context, name: str, definition) -> dict:
+    def _resolve_stage(
+        self, context: Context, name: str, definition: Dict[str, Any]
+    ) -> Dict[str, Any]:
         definition = deepcopy(definition)
         self.set_context_from(context, definition.pop(SET_KWD, {}))
         wdir = self._resolve_wdir(context, definition.get(WDIR_KWD))
@@ -106,7 +109,7 @@ class DataResolver:
 
         context.merge_update(*contexts)
 
-        logger.trace(  # pytype: disable=attribute-error
+        logger.trace(  # type: ignore
             "Context during resolution of stage %s:\n%s", name, context
         )
 
@@ -121,7 +124,7 @@ class DataResolver:
             stage_d[PARAMS_KWD] = params
         return {name: stage_d}
 
-    def _resolve_params(self, context: Context, wdir):
+    def _resolve_params(self, context: Context, wdir: PathInfo):
         tracked = defaultdict(set)
         for src, keys in context.tracked.items():
             tracked[str(PathInfo(src).relative_to(wdir))].update(keys)
@@ -134,7 +137,13 @@ class DataResolver:
         wdir = resolve(wdir, context)
         return self.wdir / str(wdir)
 
-    def _foreach(self, context: Context, name: str, foreach_data, in_data):
+    def _foreach(
+        self,
+        context: Context,
+        name: str,
+        foreach_data: Union[str, SeqOrMap],
+        in_data: Dict[str, Any],
+    ):
         def each_iter(value, key=DEFAULT_SENTINEL):
             c = Context.clone(context)
             c["item"] = value
@@ -155,7 +164,7 @@ class DataResolver:
         return join(gen)
 
     @classmethod
-    def set_context_from(cls, context: Context, to_set):
+    def set_context_from(cls, context: Context, to_set: Dict[str, Any]):
         for key, value in to_set.items():
             if key in context:
                 raise ValueError(f"Cannot set '{key}', key already exists")
