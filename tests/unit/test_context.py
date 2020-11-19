@@ -4,7 +4,15 @@ from math import pi
 import pytest
 
 from dvc.parsing import DEFAULT_PARAMS_FILE
-from dvc.parsing.context import Context, CtxDict, CtxList, Value
+from dvc.parsing.context import (
+    Context,
+    CtxDict,
+    CtxList,
+    KeyNotInContext,
+    MergeError,
+    ParamsFileNotFound,
+    Value,
+)
 from dvc.tree.local import LocalTree
 from dvc.utils.serialize import dump_yaml
 from tests.func.test_stage_resolver import recurse_not_a_node
@@ -125,7 +133,7 @@ def test_select():
     assert context.select("lst") == CtxList([1, 2, 3])
     assert context.select("lst.0") == Value(1)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyNotInContext):
         context.select("baz")
 
     d = {
@@ -139,7 +147,7 @@ def test_select():
     assert context.select("lst.0") == CtxDict(d["lst"][0])
     assert context.select("lst.1") == CtxDict(d["lst"][1])
 
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyNotInContext):
         context.select("lst.2")
 
     for i, _ in enumerate(d["lst"]):
@@ -173,7 +181,7 @@ def test_merge_dict():
     c1.merge_update(c2)
     assert c1.select("Train.us") == CtxDict(lr=10, layers=100)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(MergeError):
         # cannot overwrite by default
         c1.merge_update({"Train": {"us": {"lr": 15}}})
 
@@ -187,7 +195,7 @@ def test_merge_dict():
 
 def test_merge_list():
     c1 = Context(lst=[1, 2, 3])
-    with pytest.raises(ValueError):
+    with pytest.raises(MergeError):
         # cannot overwrite by default
         c1.merge_update({"lst": [10, 11, 12]})
 
@@ -214,20 +222,35 @@ def test_load_from(mocker):
     file = "params.yaml"
     c = Context.load_from(object(), file)
 
-    assert asdict(c["x"].meta) == {"source": file, "dpaths": ["x"]}
-    assert asdict(c["foo"].meta) == {"source": file, "dpaths": ["foo"]}
-    assert asdict(c["x"]["y"].meta) == {"source": file, "dpaths": ["x", "y"]}
+    assert asdict(c["x"].meta) == {
+        "source": file,
+        "dpaths": ["x"],
+        "local": False,
+    }
+    assert asdict(c["foo"].meta) == {
+        "source": file,
+        "local": False,
+        "dpaths": ["foo"],
+    }
+    assert asdict(c["x"]["y"].meta) == {
+        "source": file,
+        "dpaths": ["x", "y"],
+        "local": False,
+    }
     assert asdict(c["x"]["y"]["z"].meta) == {
         "source": file,
         "dpaths": ["x", "y", "z"],
+        "local": False,
     }
     assert asdict(c["x"]["lst"].meta) == {
         "source": file,
         "dpaths": ["x", "lst"],
+        "local": False,
     }
     assert asdict(c["x"]["lst"][0].meta) == {
         "source": file,
         "dpaths": ["x", "lst", "0"],
+        "local": False,
     }
 
 
@@ -247,7 +270,7 @@ def test_clone():
     assert c1 != c2
     assert c1 == Context(d)
     assert c2.select("lst.0.foo0") == Value("foo")
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyNotInContext):
         c2.select("lst.1.foo1")
 
 
@@ -384,5 +407,5 @@ def test_resolve_resolves_dict_keys():
 
 def test_merge_from_raises_if_file_not_exist(tmp_dir, dvc):
     context = Context(foo="bar")
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ParamsFileNotFound):
         context.merge_from(dvc.tree, DEFAULT_PARAMS_FILE)

@@ -9,16 +9,57 @@ from typing import Any, List, Optional, Union
 
 from funcy import identity, rpartial
 
+from dvc.exceptions import DvcException
 from dvc.parsing.interpolate import (
+    ParseError,
     get_expression,
     get_matches,
     is_exact_string,
     is_interpolated_string,
     str_interpolate,
 )
+from dvc.utils import relpath
 from dvc.utils.serialize import LOADERS
 
 SeqOrMap = Union[Sequence, Mapping]
+
+
+class ContextError(DvcException):
+    pass
+
+
+class SetError(ContextError):
+    pass
+
+
+class MergeError(ContextError):
+    def __init__(self, key, new, into):
+
+        self.key = key
+        if not isinstance(into[key], Node) or not isinstance(new, Node):
+            super().__init__(
+                f"cannot merge '{key}' as it already exists in {into}"
+            )
+            return
+
+        assert isinstance(new, Node) and isinstance(into[key], Node)
+        preexisting = into[key].meta.source
+        new_src = new.meta.source
+        path = new.meta.path()
+        super().__init__(
+            f"cannot redefine '{path}' from '{new_src}'"
+            f" as it already exists in '{preexisting}'"
+        )
+
+
+class ParamsFileNotFound(ContextError):
+    pass
+
+
+class KeyNotInContext(ContextError):
+    def __init__(self, key) -> None:
+        self.key = key
+        super().__init__(f"Could not find '{key}'")
 
 
 def _merge(into, update, overwrite):
@@ -27,9 +68,7 @@ def _merge(into, update, overwrite):
             _merge(into[key], val, overwrite)
         else:
             if key in into and not overwrite:
-                raise ValueError(
-                    f"Cannot overwrite as key {key} already exists in {into}"
-                )
+                raise MergeError(key, val, into)
             into[key] = val
             assert isinstance(into[key], Node)
 
@@ -38,6 +77,7 @@ def _merge(into, update, overwrite):
 class Meta:
     source: Optional[str] = None
     dpaths: List[str] = field(default_factory=list)
+    local: bool = True
 
     @staticmethod
     def update_path(meta: "Meta", path: Union[str, int]):
@@ -45,8 +85,8 @@ class Meta:
         return replace(meta, dpaths=dpaths)
 
     def __str__(self):
-        string = self.source or "<local>:"
-        string += self.path()
+        string = self.source or "<local>"
+        string += ":" + self.path()
         return string
 
     def path(self):
@@ -101,11 +141,17 @@ class Container(Node, ABC):
 
     def _convert(self, key, value):
         meta = Meta.update_path(self.meta, key)
+        return self._convert_with_meta(value, meta)
+
+    @staticmethod
+    def _convert_with_meta(value, meta: Meta = None):
         if value is None or isinstance(value, PRIMITIVES):
+            assert meta
             return Value(value, meta=meta)
         elif isinstance(value, Node):
             return value
         elif isinstance(value, (list, dict)):
+            assert meta
             container = CtxDict if isinstance(value, dict) else CtxList
             return container(value, meta=meta)
         else:
@@ -149,7 +195,16 @@ class Container(Node, ABC):
             raise ValueError(
                 f"Could not find '{index}' in {self.data}"
             ) from exc
-        return d.select(rems[0]) if rems else d
+
+        if not rems:
+            return d
+
+        rem = rems[0]
+        if not isinstance(d, Container):
+            raise ValueError(
+                f"{index} is a primitive value, cannot get '{rem}"
+            )
+        return d.select(rem)
 
     def get_sources(self):
         return {}
@@ -218,6 +273,9 @@ class Context(CtxDict):
         if not self._track:
             return
 
+        if node.meta and node.meta.local:
+            return
+
         for source, keys in node.get_sources().items():
             if not source:
                 continue
@@ -243,7 +301,10 @@ class Context(CtxDict):
                     Defaults to False. Note that the default is different from
                     `resolve`.
         """
-        node = super().select(key)
+        try:
+            node = super().select(key)
+        except ValueError as exc:
+            raise KeyNotInContext(key) from exc
         self._track_data(node)
         assert isinstance(node, Node)
         return node.value if unwrap else node
@@ -253,23 +314,22 @@ class Context(CtxDict):
         _, ext = os.path.splitext(file)
         loader = LOADERS[ext]
 
-        meta = Meta(source=file)
+        meta = Meta(source=file, local=False)
         return cls(loader(file, tree=tree), meta=meta)
 
     def merge_from(self, tree, path, overwrite=False):
+        path = relpath(path)
         if not tree.exists(path):
-            raise FileNotFoundError(path)
+            raise ParamsFileNotFound(f"'{path}' does not exist")
 
-        self.merge_update(
-            Context.load_from(tree, str(path)), overwrite=overwrite
-        )
+        self.merge_update(Context.load_from(tree, path), overwrite=overwrite)
 
     @classmethod
     def clone(cls, ctx: "Context") -> "Context":
         """Clones given context."""
         return cls(deepcopy(ctx.data))
 
-    def set(self, key, value):
+    def set(self, key, value, source):
         """
         Sets a value, either non-interpolated values to a key,
         or an interpolated string after resolving it.
@@ -279,6 +339,13 @@ class Context(CtxDict):
         >>> c
         {'foo': 'foo', 'bar': [1, 2], 'lorem': {'a': 'z'}, 'foobar': [1, 2]}
         """
+        try:
+            self._set(key, value, source)
+        except (ParseError, ValueError, ContextError) as exc:
+            sp = "\n" if isinstance(exc, ParseError) else " "
+            raise SetError(f"Failed to set '{source}':{sp}{str(exc)}") from exc
+
+    def _set(self, key, value, source):
         if key in self:
             raise ValueError(f"Cannot set '{key}', key already exists")
         if isinstance(value, str):
@@ -287,7 +354,7 @@ class Context(CtxDict):
         elif isinstance(value, (Sequence, Mapping)):
             self._check_not_nested_collection(key, value)
             self._check_interpolation_collection(key, value)
-        self[key] = value
+        self[key] = self._convert_with_meta(value, Meta(source=source))
 
     def resolve(self, src, unwrap=True):
         """Recursively resolves interpolation and returns resolved data.
@@ -358,7 +425,7 @@ class Context(CtxDict):
         if matches and not is_exact_string(value, matches):
             raise ValueError(
                 f"Cannot set '{key}', "
-                "joining string with interpolated string"
+                "joining string with interpolated string "
                 "is not supported"
             )
 

@@ -3,10 +3,19 @@ from collections.abc import Mapping
 from copy import deepcopy
 from itertools import chain
 
-from funcy import get_in, lcat, project
+from funcy import (
+    cached_property,
+    get_in,
+    lcat,
+    log_durations,
+    nullcontext,
+    project,
+)
 
 from dvc import dependency, output
 from dvc.hash_info import HashInfo
+from dvc.parsing import DataResolver
+from dvc.path_info import PathInfo
 
 from . import PipelineStage, Stage, loads_from
 from .exceptions import StageNameUnspecified, StageNotFound
@@ -16,11 +25,44 @@ from .utils import fill_stage_dependencies, resolve_paths
 logger = logging.getLogger(__name__)
 
 
+class NoopResolver:
+    def __init__(self, repo, wdir, d):  # pylint: disable=unused-argument
+        self.d = d
+
+    def resolve(self):
+        return self.d
+
+
+def log_time_duration(doit):
+    return (
+        log_durations(logger.debug, "resolving values")
+        if doit
+        else nullcontext()
+    )
+
+
 class StageLoader(Mapping):
-    def __init__(self, dvcfile, stages_data, lockfile_data=None):
+    def __init__(self, dvcfile, data, lockfile_data=None):
         self.dvcfile = dvcfile
-        self.stages_data = stages_data or {}
+        self.data = data or {}
+        self.stages_data = data.get("stages", {})
+
         self.lockfile_data = lockfile_data or {}
+
+        self.repo = self.dvcfile.repo
+        self._experimental = self.repo.config["feature"]["parametrization"]
+
+    @cached_property
+    def resolver(self):
+        wdir = PathInfo(self.dvcfile.path).parent
+        resolver_cls = DataResolver if self._experimental else NoopResolver
+        return resolver_cls(self.repo, wdir, self.data)
+
+    @cached_property
+    def resolved_data(self) -> dict:
+        with log_time_duration(self._experimental):
+            d = self.resolver.resolve()
+            return d.get("stages", {})
 
     @staticmethod
     def fill_from_lock(stage, lock_data=None):
@@ -93,18 +135,18 @@ class StageLoader(Mapping):
         return self.load_stage(
             self.dvcfile,
             name,
-            self.stages_data[name],
+            self.resolved_data[name],
             self.lockfile_data.get(name, {}),
         )
 
     def __iter__(self):
-        return iter(self.stages_data)
+        return iter(self.resolved_data)
 
     def __len__(self):
-        return len(self.stages_data)
+        return len(self.resolved_data)
 
     def __contains__(self, name):
-        return name in self.stages_data
+        return name in self.resolved_data
 
 
 class SingleStageLoader(Mapping):
