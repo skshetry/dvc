@@ -220,9 +220,11 @@ def test_load_stage_wdir_and_path_correctly(dvc, stage_data, lock_data):
     assert stage.path == os.path.abspath(PIPELINE_FILE)
 
 
-def test_load_stage_mapping(dvc, stage_data, lock_data):
+def test_load_stage_mapping(tmp_dir, dvc, stage_data, lock_data):
     dvcfile = Dvcfile(dvc, PIPELINE_FILE)
-    loader = StageLoader(dvcfile, {"stage": stage_data}, {"stage": lock_data})
+    loader = StageLoader(
+        dvcfile, {"stages": {"stage": stage_data}}, {"stage": lock_data}
+    )
     assert len(loader) == 1
     assert "stage" in loader
     assert "stage1" not in loader
