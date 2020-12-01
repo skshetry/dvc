@@ -3,7 +3,7 @@ from voluptuous import Any, Optional, Required, Schema
 from dvc import dependency, output
 from dvc.hash_info import HashInfo
 from dvc.output import CHECKSUMS_SCHEMA, BaseOutput
-from dvc.parsing import DO_KWD, FOREACH_KWD, SET_KWD, VARS_KWD
+from dvc.parsing import DO_KWD, FOREACH_KWD, IN_KWD, SET_KWD, USE_KWD, VARS_KWD
 from dvc.stage.params import StageParams
 
 STAGES = "stages"
@@ -59,8 +59,9 @@ PLOT_PROPS_SCHEMA = {
 PLOT_PSTAGE_SCHEMA = {str: Any(PLOT_PROPS_SCHEMA, [PLOT_PROPS_SCHEMA])}
 
 PARAM_PSTAGE_NON_DEFAULT_SCHEMA = {str: [str]}
-
-VARS_SCHEMA = [str, dict]
+LOCAL_VARS = dict
+IMPORT_VARS = str
+VARS_SCHEMA = Any([IMPORT_VARS, LOCAL_VARS], LOCAL_VARS)
 
 STAGE_DEFINITION = {
     StageParams.PARAM_CMD: str,
@@ -80,15 +81,18 @@ STAGE_DEFINITION = {
     Optional(StageParams.PARAM_PLOTS): [Any(str, PLOT_PSTAGE_SCHEMA)],
 }
 
+
 FOREACH_IN = {
     Optional(SET_KWD): dict,
     Required(FOREACH_KWD): Any(dict, list, str),
-    Required(DO_KWD): STAGE_DEFINITION,
+    DO_KWD: STAGE_DEFINITION,
+    IN_KWD: STAGE_DEFINITION,
 }
 SINGLE_PIPELINE_STAGE_SCHEMA = {str: Any(STAGE_DEFINITION, FOREACH_IN)}
 MULTI_STAGE_SCHEMA = {
-    STAGES: SINGLE_PIPELINE_STAGE_SCHEMA,
+    USE_KWD: IMPORT_VARS,
     VARS_KWD: VARS_SCHEMA,
+    STAGES: SINGLE_PIPELINE_STAGE_SCHEMA,
 }
 
 COMPILED_SINGLE_STAGE_SCHEMA = Schema(SINGLE_STAGE_SCHEMA)

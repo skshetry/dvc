@@ -115,6 +115,42 @@ def test_vars_import(tmp_dir, dvc):
     }
 
 
+def test_use_import(tmp_dir, dvc):
+    """
+    Test that different file can be loaded using `use`
+    instead of default params.yaml.
+
+    Added for the backward compatibility in the Viewer:
+    https://github.com/iterative/dvc/issues/5008
+    """
+    dump_yaml(tmp_dir / "params2.yaml", CONTEXT_DATA)
+    d = deepcopy(TEMPLATED_DVC_YAML_DATA)
+    d["use"] = "params2.yaml"
+    resolver = DataResolver(dvc, PathInfo(str(tmp_dir)), d)
+
+    resolved_data = deepcopy(RESOLVED_DVC_YAML_DATA)
+    assert_stage_equal(resolver.resolve(), resolved_data)
+    assert resolver.tracked_vars == {
+        "stage1": {"params2.yaml": USED_VARS["stage1"]},
+        "stage2": {"params2.yaml": USED_VARS["stage2"]},
+    }
+
+
+def test_vars_as_dict(tmp_dir, dvc):
+    """Test that vars as a dict work as a way for setting local vars
+
+    Added for the backward compatibility in the Viewer:
+    https://github.com/iterative/dvc/issues/5008
+    """
+    d = deepcopy(TEMPLATED_DVC_YAML_DATA)
+    d["vars"] = CONTEXT_DATA
+    resolver = DataResolver(dvc, PathInfo(str(tmp_dir)), d)
+    resolved_data = deepcopy(RESOLVED_DVC_YAML_DATA)
+
+    assert_stage_equal(resolver.resolve(), resolved_data)
+    assert not any(resolver.tracked_vars.values())
+
+
 def test_vars_and_params_import(tmp_dir, dvc):
     """
     Test that vars and params are both merged together for interpolation,
@@ -253,13 +289,14 @@ def test_with_templated_wdir(tmp_dir, dvc):
     }
 
 
-def test_simple_foreach_loop(tmp_dir, dvc):
+@pytest.mark.parametrize("do_or_in", ["do", "in"])
+def test_simple_foreach_loop(tmp_dir, dvc, do_or_in):
     iterable = ["foo", "bar", "baz"]
     d = {
         "stages": {
             "build": {
                 "foreach": iterable,
-                "do": {"cmd": "python script.py ${item}"},
+                do_or_in: {"cmd": "python script.py ${item}"},
             }
         }
     }

@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from itertools import starmap
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from funcy import join, lfilter
 
@@ -37,6 +37,10 @@ PARAMS_KWD = "params"
 FOREACH_KWD = "foreach"
 DO_KWD = "do"
 SET_KWD = "set"
+
+# for backward compatibility
+USE_KWD = "use"
+IN_KWD = "in"
 
 DEFAULT_SENTINEL = object()
 
@@ -95,13 +99,30 @@ class DataResolver:
                 to_import,
             )
 
-        vars_ = d.get(VARS_KWD, [])
-        try:
-            self.load_from_vars(
-                self.global_ctx, vars_, wdir, skip_imports=self.imported_files
-            )
-        except (ContextError, VarsAlreadyLoaded) as exc:
-            format_and_raise(exc, "'vars'", self.relpath)
+        # added for backward compatibility
+        # https://github.com/iterative/dvc/issues/5008
+        if USE_KWD in self.data:
+            try:
+                self.load_from_vars(
+                    self.global_ctx,
+                    [self.data[USE_KWD]],
+                    self.wdir,
+                    skip_imports=self.imported_files,
+                )
+            except (ContextError, VarsAlreadyLoaded) as exc:
+                format_and_raise(exc, "'use'", self.relpath)
+
+        vars_ = d.get(VARS_KWD)
+        if vars_:
+            try:
+                self.load_from_vars(
+                    self.global_ctx,
+                    vars_,
+                    self.wdir,
+                    skip_imports=self.imported_files,
+                )
+            except (ContextError, VarsAlreadyLoaded) as exc:
+                format_and_raise(exc, "'vars'", self.relpath)
 
         self.tracked_vars = {}
 
@@ -124,12 +145,21 @@ class DataResolver:
     def load_from_vars(
         self,
         context: "Context",
-        vars_: List,
+        vars_: Union[Dict[str, Any], List],
         wdir: PathInfo,
         skip_imports: Dict[str, Optional[List[str]]],
         stage_name: str = None,
     ):
         stage_name = stage_name or ""
+        joiner = "." if stage_name else ""
+
+        # https://github.com/iterative/dvc/issues/5008
+        if isinstance(vars_, dict):
+            meta = Meta(source=f"{stage_name}{joiner}vars")
+            context.merge_update(Context(vars_, meta=meta))
+            return
+
+        assert isinstance(vars_, list)
         for index, item in enumerate(vars_):
             assert isinstance(item, (str, dict))
             if isinstance(item, str):
@@ -148,19 +178,23 @@ class DataResolver:
                 context.merge_from(self.tree, path_info, select_keys=keys)
                 skip_imports[path] = keys if keys else None
             else:
-                joiner = "." if stage_name else ""
                 meta = Meta(source=f"{stage_name}{joiner}vars[{index}]")
                 context.merge_update(Context(item, meta=meta))
 
     def _resolve_entry(self, name: str, definition):
         context = Context.clone(self.global_ctx)
         if FOREACH_KWD in definition:
-            assert DO_KWD in definition
+            # https://github.com/iterative/dvc/issues/5008
+            keywords = [DO_KWD, IN_KWD]
+            keys = [key for key in keywords if key in definition]
+            assert len(keys) >= 1
+            key = keys[0]
+
             self.set_context_from(
                 context, definition.get(SET_KWD, {}), source=[name, "set"]
             )
             return self._foreach(
-                context, name, definition[FOREACH_KWD], definition[DO_KWD]
+                context, name, definition[FOREACH_KWD], definition[key]
             )
 
         try:
