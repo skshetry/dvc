@@ -1,7 +1,7 @@
 import logging
 import os
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import UserDict, defaultdict
 from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
@@ -23,6 +23,7 @@ from dvc.path_info import PathInfo
 from dvc.utils import relpath
 from dvc.utils.humanize import join
 from dvc.utils.serialize import LOADERS
+from immutables import Map
 
 logger = logging.getLogger(__name__)
 SeqOrMap = Union[Sequence, Mapping]
@@ -256,11 +257,47 @@ class CtxList(Container, MutableSequence):
         return new
 
 
+class ImmutableDict(UserDict):
+    def __init__(self):
+        self.data = Map()
+
+        # Map() is unordered, there are many assumptions
+        # on the tests that assume the dicts are ordered
+        # TODO: Fix those tests assumption, and see if we can utilize immutable
+        # property further in our advantage.
+        self.order = []
+
+    def __setitem__(self, key, value):
+        self.data = self.data.set(key, value)
+        self.order.append(key)
+
+    def __delitem__(self, key):
+        self.data = self.data.delete(key)
+        self.order.remove(key)
+
+    def __iter__(self):
+        return iter(self.order)
+
+    def __repr__(self) -> str:
+        items = []
+        for key in self.order:
+            items.append("{!r}: {!r}".format(key, self.data[key]))
+        # `repr` for ImmutableMap has a class name at the start
+        return "{{{}}}".format(", ".join(items))
+
+    def __deepcopy__(self, _):
+        new = ImmutableDict()
+        new.order = self.order[:]
+        with self.data.mutate() as mutation:
+            new.data = mutation.finish()
+        return new
+
+
 class CtxDict(Container, MutableMapping):
     def __init__(self, mapping: Mapping = None, meta: Meta = None, **kwargs):
         super().__init__(meta=meta)
 
-        self.data: dict = {}
+        self.data = ImmutableDict()
         if mapping:
             self.update(mapping)
         self.update(kwargs)
