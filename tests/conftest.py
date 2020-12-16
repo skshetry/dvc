@@ -1,5 +1,6 @@
 import os
 from contextlib import suppress
+from pathlib import Path
 
 import pytest
 
@@ -138,3 +139,17 @@ def pytest_configure(config):
             enabled_remotes.discard(remote_name)
         if enabled:
             enabled_remotes.add(remote_name)
+
+
+def pytest_collection_modifyitems(
+    config, items
+):  # pylint: disable=unused-argument
+    tests_dir = Path(__file__).parent
+    markers = {"func", "unit", "experiments"}
+
+    for item in items:
+        path = Path(item.fspath).relative_to(tests_dir)
+        parts = set(path.parts)
+        for name in markers & parts:
+            marker = getattr(pytest.mark, name)
+            item.add_marker(marker)
