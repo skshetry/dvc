@@ -43,3 +43,10 @@ def load(odb, hash_info):
     if hash_info.isdir:
         return Tree.load(odb, hash_info)
     return odb.get(hash_info)
+
+
+def project(odb, hash_info, fs, path_info, strategy=None):
+    from dvc.checkout import checkout
+
+    obj = load(odb, hash_info)
+    return checkout(path_info, fs, hash_info, obj, odb, relink=True)

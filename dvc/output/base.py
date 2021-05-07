@@ -174,6 +174,18 @@ class BaseOutput:
         return False
 
     @property
+    def is_decorated(self) -> bool:
+        return self.is_metric or self.is_plot
+
+    @property
+    def is_metric(self) -> bool:
+        return bool(self.metric) or bool(self.live)
+
+    @property
+    def is_plot(self) -> bool:
+        return bool(self.plot)
+
+    @property
     def use_scm_ignore(self):
         if not self.is_in_repo:
             return False
