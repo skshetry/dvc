@@ -3,7 +3,7 @@ from voluptuous import Any, Optional, Required, Schema
 from dvc import dependency, output
 from dvc.hash_info import HashInfo
 from dvc.output import CHECKSUMS_SCHEMA, Output
-from dvc.parsing import DO_KWD, FOREACH_KWD, VARS_KWD
+from dvc.parsing import DO_KWD, FOREACH_KWD, MATRIX_KWD, VARS_KWD
 from dvc.parsing.versions import SCHEMA_KWD, lockfile_version_schema
 from dvc.stage.params import StageParams
 
@@ -97,7 +97,13 @@ FOREACH_IN = {
     Required(FOREACH_KWD): Any(dict, list, str),
     Required(DO_KWD): STAGE_DEFINITION,
 }
-SINGLE_PIPELINE_STAGE_SCHEMA = {str: Any(FOREACH_IN, STAGE_DEFINITION)}
+MATRIX_DO = {
+    Required(MATRIX_KWD): Any(dict, list, set),
+    Required(DO_KWD): STAGE_DEFINITION,
+}
+SINGLE_PIPELINE_STAGE_SCHEMA = {
+    str: Any(FOREACH_IN, MATRIX_DO, STAGE_DEFINITION)
+}
 MULTI_STAGE_SCHEMA = {
     STAGES: SINGLE_PIPELINE_STAGE_SCHEMA,
     VARS_KWD: VARS_SCHEMA,

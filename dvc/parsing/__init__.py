@@ -48,6 +48,7 @@ VARS_KWD = "vars"
 WDIR_KWD = "wdir"
 PARAMS_KWD = "params"
 FOREACH_KWD = "foreach"
+MATRIX_KWD = "matrix"
 DO_KWD = "do"
 
 DEFAULT_PARAMS_FILE = "params.yaml"
@@ -121,7 +122,7 @@ def check_interpolations(data: DictStr, where: str, path: str):
     return recurse(func)(data)
 
 
-Definition = Union["ForeachDefinition", "EntryDefinition"]
+Definition = Union["ForeachDefinition", "EntryDefinition", "MatrixDefinition"]
 
 
 def make_definition(
@@ -130,6 +131,8 @@ def make_definition(
     args = resolver, resolver.context, name, definition
     if FOREACH_KWD in definition:
         return ForeachDefinition(*args, **kwargs)
+    if MATRIX_KWD in definition:
+        return MatrixDefinition(*args, **kwargs)
     return EntryDefinition(*args, **kwargs)
 
 
@@ -197,14 +200,16 @@ class DataResolver:
 
         if key:
             return isinstance(
-                definition, ForeachDefinition
+                definition, (ForeachDefinition, MatrixDefinition)
             ) and definition.has_member(key)
-        return not isinstance(definition, ForeachDefinition)
+        return not isinstance(
+            definition, (ForeachDefinition, MatrixDefinition)
+        )
 
     @collecting
     def get_keys(self):
         for name, definition in self.definitions.items():
-            if isinstance(definition, ForeachDefinition):
+            if isinstance(definition, (ForeachDefinition, MatrixDefinition)):
                 yield from definition.get_generated_names()
                 continue
             yield name
@@ -453,3 +458,137 @@ class ForeachDefinition:
             # does not return at all (it's not able to understand it for some
             # reason)
             raise AssertionError("unreachable")
+
+
+class MatrixDefinition:
+    def __init__(
+        self,
+        resolver: DataResolver,
+        context: Context,
+        name: str,
+        definition: DictStr,
+        where=STAGES_KWD,
+    ):
+        self.resolver = resolver
+        self.context = context
+        self.relpath = self.resolver.relpath
+        self.name = name
+
+        assert DO_KWD in definition
+        self.matrix_data = definition[MATRIX_KWD]
+        self._do_definition = definition[DO_KWD]
+
+        self.where = where
+        self.pair = IterationPair()
+
+    @cached_property
+    def do_definition(self):
+        # optimization: check for syntax errors only once for `matrix` stages
+        check_syntax_errors(self._do_definition, self.name, self.relpath)
+        return self._do_definition
+
+    @cached_property
+    def resolved_iterable(self):
+        try:
+            iterable = self.context.resolve(self.matrix_data, unwrap=False)
+        except (ContextError, ParseError) as exc:
+            format_and_raise(
+                exc, f"'{self.where}.{self.name}.matrix'", self.relpath
+            )
+
+        # foreach data can be a resolved dictionary/list.
+        self._check_is_map_or_seq(iterable)
+        it = iterable.values() if isinstance(iterable, Mapping) else iterable
+        for item in it:
+            self._check_is_map_or_seq(item)
+
+        return iterable
+
+    @cached_property
+    def normalized_iterable(self):
+        iterable = self.resolved_iterable
+
+        def normalize(it):
+            if isinstance(it, Mapping):
+                return it
+
+            assert isinstance(it, Sequence)
+            # if the list contains composite data, index are the keys
+            return {to_str(idx): value for idx, value in enumerate(it)}
+
+        if isinstance(iterable, Mapping):
+            it = {k: normalize(v) for k, v in iterable.items()}
+        else:
+            it = {to_str(i): normalize(v) for i, v in enumerate(iterable)}
+
+        fst, *rest = it.values()
+        entries = set(fst).intersection(*rest)
+        res = {}
+        for entry in entries:
+            d = {key: it[key][entry] for key in it.keys()}
+            name = self._join_keys(map(to_str, d.values()))
+            res[name] = d
+        return res
+
+    def _check_is_map_or_seq(self, iterable):
+        if not is_map_or_seq(iterable):
+            node = iterable.value if isinstance(iterable, Node) else iterable
+            typ = type(node).__name__
+            raise ResolveError(
+                f"failed to resolve '{self.where}.{self.name}.foreach'"
+                f" in '{self.relpath}': expected list/dictionary, got " + typ
+            )
+
+    def _generate_name(self, key: str) -> str:
+        return f"{self.name}{JOIN}{key}"
+
+    def _join_keys(self, keys: Union[Tuple[str], str]) -> str:
+        if isinstance(keys, (str, float)):
+            return keys
+        return ",".join(keys)
+
+    def has_member(self, key: Union[Tuple[str], str]) -> bool:
+        return self._join_keys(key) in self.normalized_iterable
+
+    def get_generated_names(self) -> List[str]:
+        return list(map(self._generate_name, self.normalized_iterable))
+
+    def resolve_one(self, key: str) -> DictStr:
+        err_message = f"Could not find '{key}' in matrix group '{self.name}'"
+        with reraise(KeyError, EntryNotFound(err_message)):
+            value = self.normalized_iterable[key]
+
+        # NOTE: we need to use resolved iterable/foreach-data,
+        # not the normalized ones to figure out whether to make item/key
+        # available
+        inserted = [self.pair.value]
+        temp_dict = {self.pair.value: value}
+        key_str = self.pair.key
+        if key_str in inserted:
+            temp_dict[key_str] = key
+
+        with self.context.set_temporarily(temp_dict, reserve=True):
+            # optimization: item and key can be removed on __exit__() as they
+            # are top-level values, and are not merged recursively.
+            # This helps us avoid cloning context, which is slower
+            # (increasing the size of the context might increase
+            # the no. of items to be generated which means more cloning,
+            # i.e. quadratic complexity).
+            generated = self._generate_name(key)
+            entry = EntryDefinition(
+                self.resolver, self.context, generated, self.do_definition
+            )
+            try:
+                # optimization: skip checking for syntax errors on each foreach
+                # generated stages. We do it once when accessing do_definition.
+                return entry.resolve_stage(skip_checks=True)
+            except ContextError as exc:
+                format_and_raise(exc, f"stage '{generated}'", self.relpath)
+
+            # let mypy know that this state is unreachable as format_and_raise
+            # does not return at all (it's not able to understand it for some
+            # reason)
+            raise AssertionError("unreachable")
+
+    def resolve_all(self) -> DictStr:
+        return join(map(self.resolve_one, self.normalized_iterable))

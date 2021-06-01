@@ -7,7 +7,13 @@ from funcy import cached_property, get_in, lcat, once, project
 
 from dvc import dependency, output
 from dvc.hash_info import HashInfo
-from dvc.parsing import FOREACH_KWD, JOIN, DataResolver, EntryNotFound
+from dvc.parsing import (
+    FOREACH_KWD,
+    JOIN,
+    MATRIX_KWD,
+    DataResolver,
+    EntryNotFound,
+)
 from dvc.parsing.versions import LOCKFILE_VERSION
 from dvc.path_info import PathInfo
 
@@ -159,7 +165,8 @@ class StageLoader(Mapping):
 
     def is_foreach_generated(self, name: str):
         return (
-            name in self.stages_data and FOREACH_KWD in self.stages_data[name]
+            name in self.stages_data
+            and {FOREACH_KWD, MATRIX_KWD} & self.stages_data[name].keys()
         )
 
 
