@@ -42,7 +42,7 @@ pylint-plugin-utils==0.6
 mypy==0.910
 types-requests
 types-paramiko
-types-tabulate
+types-tabulate==0.8.1
 types-toml
 
 # pypi doesn't allow for direct dependencies
