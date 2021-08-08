@@ -43,7 +43,7 @@ mypy==0.910
 types-requests
 types-paramiko
 types-tabulate
-types-toml
+types-toml==0.1.4
 
 # pypi doesn't allow for direct dependencies
 # gdrivefs @ git+https://github.com/intake/gdrivefs.git
