@@ -5,12 +5,14 @@ import threading
 from fsspec.asyn import fsspec_loop
 from fsspec.utils import infer_storage_options
 from funcy import cached_property, memoize, wrap_prop
+from tqdm.utils import CallbackIOWrapper
 
 from dvc.exceptions import DvcException
 from dvc.path_info import CloudURLInfo
 from dvc.scheme import Schemes
 from dvc.utils import format_link
 
+from ..progress import DEFAULT_CALLBACK
 from .fsspec_wrapper import ObjectFSWrapper
 
 logger = logging.getLogger(__name__)
@@ -159,3 +161,15 @@ class AzureFileSystem(ObjectFSWrapper):
                 " failed.\nLearn more about configuration settings at"
                 f" {format_link('https://man.dvc.org/remote/modify')}"
             ) from e
+
+    def put_file(
+        self, from_file, to_info, callback=DEFAULT_CALLBACK, **kwargs
+    ):
+        # AzureFileSystem.put_file does not support callbacks yet.
+        self.makedirs(to_info.parent)
+        size = os.path.getsize(from_file)
+        with open(from_file, "rb") as fobj:
+            callback.set_size(size)
+            wrapped = CallbackIOWrapper(callback.relative_update, fobj)
+            self.upload_fobj(wrapped, to_info)
+            self.fs.invalidate_cache(self._with_bucket(to_info.parent))
