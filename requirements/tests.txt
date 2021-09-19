@@ -41,4 +41,4 @@ mypy==0.910
 types-requests
 types-paramiko
 types-tabulate
-types-toml
+types-toml==0.10.0
