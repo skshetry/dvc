@@ -38,7 +38,7 @@ pylint-plugin-utils==0.6
 
 # type-checking
 mypy==0.910
-types-requests
+types-requests==2.25.7
 types-paramiko
 types-tabulate
 types-toml
