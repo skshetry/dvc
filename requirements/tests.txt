@@ -19,7 +19,7 @@ crc32c==2.2.post0
 xmltodict==0.12.0
 google-compute-engine==2.8.13
 google-cloud-storage==1.42.1
-urllib3==1.26.6
+urllib3==1.26.7
 dvclive>=0.2.1
 
 # required by collective.checkdocs
