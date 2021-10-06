@@ -1,1 +1,1 @@
-fsspec[arrow]; python_version < '3.10'
+fsspec[arrow]==2021.10.0; python_version < '3.10'
