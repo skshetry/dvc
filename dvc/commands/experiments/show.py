@@ -115,6 +115,7 @@ def _collect_rows(
                 )
             elif parent_rev == base_rev:
                 typ = "checkpoint_base"
+                parent = parent_rev[:7]
             else:
                 typ = "checkpoint_commit"
                 parent = parent_rev[:7]
