@@ -37,10 +37,23 @@ class TabularData(MutableSequence[Sequence["CellT"]]):
         self._columns: Dict[str, Column] = {name: Column() for name in columns}
         self._keys: List[str] = list(columns)
         self._fill_value = fill_value
+        self._protected: Set[str] = set()
 
     @property
     def columns(self) -> List[Column]:
         return list(map(self.column, self.keys()))
+
+    @property
+    def protected(self) -> Set[str]:
+        return self._protected
+
+    def protect(self, *col_names: str):
+        for col_name in col_names:
+            self._protected.add(col_name)
+
+    def unprotect(self, *col_names: str):
+        for col_name in col_names:
+            self._protected.remove(col_name)
 
     def column(self, name: str) -> Column:
         return self._columns[name]
@@ -125,9 +138,17 @@ class TabularData(MutableSequence[Sequence["CellT"]]):
         return len(self.columns), len(self)
 
     def drop(self, *col_names: str) -> None:
-        for col_name in col_names:
-            self._keys.remove(col_name)
-            self._columns.pop(col_name)
+        from re import match
+
+        to_remove = set()
+        for key in self._keys:
+            if any(match(k, key) for k in self.protected):
+                continue
+            if any(match(d, key) for d in col_names):
+                to_remove.add(key)
+        for col in to_remove:
+            self._keys.remove(col)
+            self._columns.pop(col)
 
     def rename(self, from_col_name: str, to_col_name: str) -> None:
         self._columns[to_col_name] = self._columns.pop(from_col_name)
