@@ -340,7 +340,7 @@ def show_experiments(
         kwargs.get("iso"),
     )
     if keep:
-        td.protect(*keep)
+        td.protect(keep)
 
     for col in ("State", "Executor"):
         if td.is_empty(col):
@@ -382,10 +382,14 @@ def show_experiments(
     if kwargs.get("only_changed", False) or html:
         td.drop_duplicates("cols", ignore_empty=False)
 
+    if html:
+        if drop is None:
+            drop = "Created"
+        else:
+            drop += "|Created"
+
     if drop is not None:
-        if html:
-            drop.append("Created")
-        td.drop(*drop)
+        td.drop(drop)
 
     html_args = {}
     if html:
@@ -395,9 +399,7 @@ def show_experiments(
             how="all",
             subset=subset,
         )
-        td.drop_duplicates(
-            "rows",
-            subset=subset)
+        td.drop_duplicates("rows", subset=subset)
         td.column("Experiment")[:] = [
             # remove tree characters
             str(x).encode("ascii", "ignore").strip().decode()
@@ -529,18 +531,23 @@ def add_parser(experiments_subparsers, parent_parser):
         help="Do not pipe output into a pager.",
     )
     experiments_show_parser.add_argument(
-        "--keep",
-        action="append",
-        default=[],
-        help="Always show the specified columns in output table.",
-        metavar="<column_list>",
+        "--only-changed",
+        action="store_true",
+        default=False,
+        help=(
+            "Only show metrics/params with values varying "
+            "across the selected experiments."
+        ),
     )
     experiments_show_parser.add_argument(
         "--drop",
-        action="append",
-        default=[],
-        help="Remove the specified columns from output table.",
-        metavar="<column_list>",
+        help="Remove the columns matching the specified regex pattern.",
+        metavar="<regex_pattern>",
+    )
+    experiments_show_parser.add_argument(
+        "--keep",
+        help="Preserve the columns matching the specified regex pattern.",
+        metavar="<regex_pattern>",
     )
     experiments_show_parser.add_argument(
         "--param-deps",
@@ -598,15 +605,6 @@ def add_parser(experiments_subparsers, parent_parser):
             f"point. Rounds to {DEFAULT_PRECISION} digits by default."
         ),
         metavar="<n>",
-    )
-    experiments_show_parser.add_argument(
-        "--only-changed",
-        action="store_true",
-        default=False,
-        help=(
-            "Only show metrics/params with values varying "
-            "across the selected experiments."
-        ),
     )
     experiments_show_parser.add_argument(
         "--html",

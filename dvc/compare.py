@@ -273,7 +273,10 @@ class TabularData(MutableSequence[Sequence["CellT"]]):
             self.drop(*to_drop)
 
     def drop_duplicates(
-        self, axis: str = "rows", subset: Optional[List] = None, ignore_empty: bool = True
+        self,
+        axis: str = "rows",
+        subset: Optional[List] = None,
+        ignore_empty: bool = True,
     ):
         if axis not in ["rows", "cols"]:
             raise ValueError(
