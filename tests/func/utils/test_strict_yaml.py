@@ -351,7 +351,11 @@ def test_exceptions(tmp_dir, dvc, capsys, text, expected, mocker):
     out, err = capsys.readouterr()
 
     assert not out
-    assert expected in err
+
+    # strip whitespace on the right: output is always left-justified
+    # by rich.syntax.Syntax:
+    for l_expected, l_err in zip(expected.split("\n"), err.split("\n")):
+        assert l_expected.rstrip(" ") == l_err.rstrip(" ")
 
 
 def test_make_relpath(tmp_dir, monkeypatch):
