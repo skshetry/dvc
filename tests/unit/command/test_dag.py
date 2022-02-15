@@ -2,7 +2,13 @@ import networkx as nx
 import pytest
 
 from dvc.cli import parse_args
-from dvc.commands.dag import CmdDAG, _build, _show_ascii, _show_dot
+from dvc.commands.dag import (
+    CmdDAG,
+    _build,
+    _show_ascii,
+    _show_dot,
+    _show_mermaid,
+)
 
 
 @pytest.mark.parametrize("fmt", [None, "--dot"])
@@ -131,3 +137,23 @@ def test_show_dot(repo):
         "\"stage: '4'\" -> \"stage: '3'\";\n"
         "}\n"
     )
+
+
+def test_show_mermaid(repo):
+    assert [
+        line.rstrip() for line in _show_mermaid(repo.index.graph).splitlines()
+    ] == [
+        "flowchart TD",
+        "\tnode1[stage: '1']",
+        "\tnode2[stage: '2']",
+        "\tnode3[stage: '3']",
+        "\tnode4[stage: '4']",
+        "\tnode5[stage: 'a.dvc']",
+        "\tnode6[stage: 'b.dvc']",
+        "\tnode3-->node4",
+        "\tnode5-->node1",
+        "\tnode5-->node3",
+        "\tnode5-->node4",
+        "\tnode6-->node2",
+        "\tnode6-->node3",
+    ]

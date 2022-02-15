@@ -28,6 +28,27 @@ def _show_dot(G):
     return dot_file.getvalue()
 
 
+def _show_mermaid(G):
+    from dvc.repo.graph import get_pipelines
+
+    pipelines = get_pipelines(G)
+
+    graph = "flowchart TD"
+    total_nodes = 0
+    for pipeline in pipelines:
+        node_ids = {}
+        nodes = sorted(str(x) for x in pipeline.nodes)
+        for node in nodes:
+            total_nodes += 1
+            node_id = f"node{total_nodes}"
+            graph += f"\n\t{node_id}[{node}]"
+            node_ids[node] = node_id
+        edges = sorted((str(a), str(b)) for b, a in pipeline.edges)
+        for a, b in edges:
+            graph += f"\n\t{node_ids[str(a)]}-->{node_ids[str(b)]}"
+    return graph
+
+
 def _collect_targets(repo, target, outs):
     if not target:
         return []
@@ -105,6 +126,8 @@ class CmdDAG(CmdBase):
 
         if self.args.dot:
             ui.write(_show_dot(G))
+        elif self.args.mermaid:
+            ui.write(_show_mermaid(G))
         else:
             with ui.pager():
                 ui.write(_show_ascii(G))
@@ -126,6 +149,12 @@ def add_parser(subparsers, parent_parser):
         action="store_true",
         default=False,
         help="Print DAG with .dot format.",
+    )
+    dag_parser.add_argument(
+        "--mermaid",
+        action="store_true",
+        default=False,
+        help="Print DAG with mermaid format.",
     )
     dag_parser.add_argument(
         "--full",
