@@ -220,6 +220,22 @@ def test_no_changes(mocker, capsys):
     assert not out
 
 
+def test_no_changes_hide_missing(mocker, capsys):
+    args = parse_args(["diff", "--json", "--hide-missing"])
+    cmd = args.func(args)
+    mocker.patch("dvc.repo.Repo.diff", return_value={})
+
+    assert 0 == cmd.run()
+    out, _ = capsys.readouterr()
+    assert "{}" in out
+
+    args = parse_args(["diff"])
+    cmd = args.func(args)
+    assert 0 == cmd.run()
+    out, _ = capsys.readouterr()
+    assert not out
+
+
 def test_show_markdown(capsys):
     diff = {
         "deleted": [
