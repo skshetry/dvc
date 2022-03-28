@@ -1,0 +1,5 @@
+stages:
+  test:
+    cmd 'true'
+    params:
+    - params.yaml:*
