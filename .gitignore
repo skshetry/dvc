@@ -1,9 +1,10 @@
 neatlynx.conf
-neatlynx/__pycache__
 .idea
 /cache
 *.pyc
-.env/
+.env
+.venv
+venv
 .env2.7/
 .python-version
 
@@ -40,3 +41,7 @@ scripts/ci/gcp-creds.json
 
 *~
 /dvc/_dvc_version.py
+__pycache__
+.mypy_cache
+.pytest_cache
+.nox/
