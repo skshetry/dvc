@@ -125,6 +125,15 @@ def _check_stage_exists(
         )
 
 
+def _remove_live_section(context):
+    live_path = context.pop("live", None)
+    if live_path:
+        context["plots"].append(os.path.join(live_path, "scalars"))
+        context["metrics"].append(f"{live_path}.json")
+
+    return context
+
+
 def validate_prompts(
     repo: "Repo", key: str, value: str
 ) -> Union[Any, Tuple[Any, str]]:
@@ -222,7 +231,12 @@ def init(
             defaults.pop("live", None)  # suppress live otherwise
 
     context: Dict[str, str] = {**defaults, **overrides}
+    context["plots"] = [context.get("plots")]  # type: ignore
+    context["metrics"] = [context.get("metrics")]  # type: ignore
+
     assert "cmd" in context
+
+    context = _remove_live_section(context)
 
     params = context.get("params")
     if params:
@@ -239,18 +253,16 @@ def init(
         except MissingParamsFile:
             pass
 
-    checkpoint_out = bool(context.get("live"))
     models = context.get("models")
     stage = repo.stage.create(
         name=name,
         cmd=context["cmd"],
         deps=compact([context.get("code"), context.get("data")]),
         params=[{params: None}] if params else None,
-        metrics_no_cache=compact([context.get("metrics")]),
-        plots_no_cache=compact([context.get("plots")]),
-        live=context.get("live"),
+        metrics_no_cache=compact(context["metrics"]),
+        plots_no_cache=compact(context["plots"]),
         force=force,
-        **{"checkpoints" if checkpoint_out else "outs": compact([models])},
+        **{"checkpoints" if with_live else "outs": compact([models])},
     )
 
     with _disable_logging(), repo.scm_context(autostage=True, quiet=True):
