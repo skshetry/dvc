@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional
 from funcy import split
 
 from dvc.progress import Tqdm
-from dvc.utils.threadpool import ThreadPoolExecutor
+from dvc.utils.executors import ThreadPoolExecutor
 
 if TYPE_CHECKING:
     from dvc.hash_info import HashInfo

@@ -4,7 +4,7 @@ import time
 import pytest
 from funcy import raiser
 
-from dvc.utils.threadpool import ThreadPoolExecutor
+from dvc.utils.executors import ThreadPoolExecutor
 
 
 @pytest.mark.parametrize("wait", [True, False])
