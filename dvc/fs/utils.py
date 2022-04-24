@@ -7,8 +7,9 @@ from .base import RemoteActionNotImplemented
 from .local import LocalFileSystem
 
 if TYPE_CHECKING:
+    from dvc.types import AnyPath
+
     from .base import FileSystem
-    from .types import AnyPath
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def _link(
         ) from exc
 
 
-def _copy(
+def copy(
     from_fs: "FileSystem",
     from_path: "AnyPath",
     to_fs: "FileSystem",
@@ -47,7 +48,7 @@ def _copy(
         return from_fs.download_file(from_path, to_path)
 
     with from_fs.open(from_path, mode="rb") as fobj:
-        size = from_fs.getsize(from_path)
+        size = from_fs.size(from_path)
         return to_fs.upload(fobj, to_path, total=size)
 
 
@@ -63,7 +64,7 @@ def _try_links(
         link = links[0]
 
         if link == "copy":
-            return _copy(from_fs, from_path, to_fs, to_path)
+            return copy(from_fs, from_path, to_fs, to_path)
 
         try:
             return _link(link, from_fs, from_path, to_fs, to_path)
