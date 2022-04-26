@@ -332,7 +332,7 @@ class FileSystem:
         else:
             desc = self.path.name(to_info)
 
-        with FsspecCallback.as_tqdm_callback(
+        with FsspecCallback.as_rich_callback(
             callback,
             desc=desc,
             bytes=True,
@@ -362,7 +362,7 @@ class FileSystem:
             makedirs(to_info, exist_ok=True)
             return
 
-        with FsspecCallback.as_tqdm_callback(
+        with FsspecCallback.as_rich_callback(
             callback,
             total=-1,
             desc=f"Downloading directory {self.path.name(from_info)}",
@@ -393,7 +393,7 @@ class FileSystem:
     ):
         from .local import localfs
 
-        with FsspecCallback.as_tqdm_callback(
+        with FsspecCallback.as_rich_callback(
             callback,
             total=-1,
             desc=self.path.name(from_info),
