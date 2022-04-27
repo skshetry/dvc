@@ -1,4 +1,3 @@
-import io
 import logging
 import os
 from typing import TYPE_CHECKING, Dict
@@ -70,10 +69,8 @@ class ReferenceObjectDB(ObjectDB):
             )
         ref_file = ReferenceHashFile(from_info, from_fs, hash_info)
         self._obj_cache[hash_info] = ref_file
-        ref_fobj = io.BytesIO(ref_file.to_bytes())
-        ref_fobj.seek(0)
         try:
-            self.fs.upload(ref_fobj, to_info)
+            self.fs.pipe_file(to_info, ref_file.to_bytes())
         except OSError as exc:
             if isinstance(exc, FileExistsError) or (
                 os.name == "nt"

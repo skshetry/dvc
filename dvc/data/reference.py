@@ -1,7 +1,7 @@
 import errno
+import json
 import logging
 import os
-import pickle
 from typing import TYPE_CHECKING, Optional
 
 from dvc.objects.errors import ObjectFormatError
@@ -50,37 +50,55 @@ class ReferenceHashFile(HashFile):
         assert self.fs
         return self.fs.checksum(self.fs_path)
 
-    def to_bytes(self):
+    def to_dict(self):
         # NOTE: dumping reference FS's this way is insecure, as the
         # fully parsed remote FS config will include credentials
         #
         # ReferenceHashFiles should currently only be serialized in
         # memory and not to disk
         fs_path = self.fs_path
-        dict_ = {
+        return {
             self.PARAM_PATH: fs_path,
-            self.PARAM_HASH: self.hash_info,
+            self.PARAM_HASH: self.hash_info.to_dict(),
             self.PARAM_CHECKSUM: self.checksum,
             self.PARAM_FS_CONFIG: self.config_tuple(self.fs),
         }
-        try:
-            return pickle.dumps(dict_)
-        except pickle.PickleError as exc:
-            raise ObjectFormatError(f"Could not pickle {self}") from exc
+
+    def to_str(self) -> str:
+        return json.dumps(self.to_dict())
+
+    def to_bytes(self) -> bytes:
+        return self.to_str().encode("utf-8")
 
     @classmethod
-    def from_bytes(cls, data: bytes, fs_cache: Optional[dict] = None):
+    def from_str(
+        cls, s: str, fs_cache: Optional[dict] = None
+    ) -> "ReferenceHashFile":
+        try:
+            return cls.from_dict(json.loads(s), fs_cache=fs_cache)
+        except json.JSONDecodeError as exc:
+            raise ObjectFormatError("ReferenceHashFile is corrupted") from exc
+
+    @classmethod
+    def from_bytes(
+        cls, b: bytes, fs_cache: Optional[dict] = None
+    ) -> "ReferenceHashFile":
+        try:
+            return cls.from_str(b.decode("utf-8"), fs_cache=fs_cache)
+        except UnicodeDecodeError as exc:
+            raise ObjectFormatError("ReferenceHashFile is corrupted") from exc
+
+    @classmethod
+    def from_dict(
+        cls, dict_, fs_cache: Optional[dict] = None
+    ) -> "ReferenceHashFile":
         from dvc.fs import get_fs_cls
         from dvc.fs.repo import RepoFileSystem, _RepoFileSystem
-
-        try:
-            dict_ = pickle.loads(data)
-        except pickle.PickleError as exc:
-            raise ObjectFormatError("ReferenceHashFile is corrupted") from exc
+        from dvc.hash_info import HashInfo
 
         try:
             fs_path = dict_[cls.PARAM_PATH]
-            hash_info = dict_[cls.PARAM_HASH]
+            hash_info = HashInfo.from_dict(dict_[cls.PARAM_HASH])
         except KeyError as exc:
             raise ObjectFormatError("ReferenceHashFile is corrupted") from exc
 

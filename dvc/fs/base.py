@@ -286,6 +286,9 @@ class FileSystem:
             )
         self.fs.invalidate_cache(self.path.parent(to_info))
 
+    def pipe_file(self, path: AnyFSPath, value: bytes, **kwargs: Any):
+        self.fs.pipe_file(path, value, **kwargs)
+
     def get_file(
         self,
         from_info: AnyFSPath,
