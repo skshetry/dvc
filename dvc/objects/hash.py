@@ -1,12 +1,13 @@
 import hashlib
+from itertools import chain
 import logging
-from typing import TYPE_CHECKING, Any, BinaryIO, Dict, Tuple
+from typing import TYPE_CHECKING, Any, BinaryIO, Dict, Iterator, Tuple
 
 from dvc.fs._callback import DEFAULT_CALLBACK, FsspecCallback, TqdmCallback
 from dvc.fs.utils import is_exec
 
 from .hash_info import HashInfo
-from .istextfile import istextfile
+from .istextfile import DEFAULT_CHUNK_SIZE, istextblock
 from .meta import Meta
 
 logger = logging.getLogger(__name__)
@@ -36,18 +37,28 @@ def dos2unix(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n")
 
 
-def _fobj_md5(
-    fobj: BinaryIO,
-    hash_md5: "hashlib._Hash",
-    binary: bool,
-    chunk_size: int = 2**20,
-) -> None:
+def read_chunks(fobj: BinaryIO, chunk_size: int) -> Iterator[bytes]:
     while True:
         data = fobj.read(chunk_size)
         if not data:
             break
-        chunk = data if binary else dos2unix(data)
-        hash_md5.update(chunk)
+        yield data
+
+
+def fobj_md5(
+    fobj: BinaryIO,
+    chunk_size: int = 2**20,
+) -> str:
+    hash_md5 = hashlib.md5()
+    block = fobj.read(DEFAULT_CHUNK_SIZE)
+    binary = block and istextblock(block)
+    chunks = [block]
+    if block:
+        chunks = chain(chunks, read_chunks(fobj, chunk_size))
+
+    for chunk in chunks:
+        hash_md5.update(chunk if binary else dos2unix(chunk))
+    return hash_md5.hexdigest()
 
 
 def file_md5(
@@ -56,14 +67,10 @@ def file_md5(
     callback: "FsspecCallback" = DEFAULT_CALLBACK,
 ) -> str:
     """get the (md5 hexdigest, md5 digest) of a file"""
-
-    hash_md5 = hashlib.md5()
-    binary = not istextfile(fname, fs=fs)
     size = fs.size(fname) or 0
     callback.set_size(size)
     with fs.open(fname, "rb") as fobj:
-        _fobj_md5(callback.wrap_attr(fobj), hash_md5, binary)
-    return hash_md5.hexdigest()
+        return fobj_md5(callback.wrap_attr(fobj))
 
 
 def _hash_file(
