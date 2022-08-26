@@ -12,6 +12,8 @@ from typing import (
 )
 
 from dvc.ui import ui
+from dvc_data import diff
+from dvc_data.diff import ROOT, Change, DiffResult, TreeEntry
 
 if TYPE_CHECKING:
     from scmrepo.base import Base
@@ -34,11 +36,62 @@ def _in_cache(obj: "HashInfo", cache: "HashFileDB") -> bool:
         return False
 
 
+def diff_obj(  # noqa: C901
+    old: Optional["HashFile"],
+    new: Optional["HashFile"],
+) -> DiffResult:
+    from dvc_data.objects.tree import Tree
+
+    if old is None and new is None:
+        return DiffResult()
+
+    def _get_keys(obj):
+        if not obj:
+            return []
+        return [ROOT] + (
+            [key for key, _, _ in obj] if isinstance(obj, Tree) else []
+        )
+
+    old_keys = set(_get_keys(old))
+    new_keys = set(_get_keys(new))
+
+    def _get(obj, key):
+        if not obj or key == ROOT:
+            return None, (obj.hash_info if obj else None)
+        if not isinstance(obj, Tree):
+            # obj is not a Tree and key is not a ROOT
+            # hence object does not exist for a given key
+            return None, None
+        return obj.get(key, (None, None))
+
+    ret = DiffResult()
+    for key in old_keys | new_keys:
+        old_meta, old_oid = _get(old, key)
+        new_meta, new_oid = _get(new, key)
+
+        change = Change(
+            old=TreeEntry(False, key, old_meta, old_oid),
+            new=TreeEntry(False, key, new_meta, new_oid),
+        )
+
+        if change.typ == diff.ADD:
+            ret.added.append(change)
+        elif change.typ == diff.MODIFY:
+            ret.modified.append(change)
+        elif change.typ == diff.DELETE:
+            ret.deleted.append(change)
+        else:
+            assert change.typ == diff.UNCHANGED
+            ret.unchanged.append(change)
+    return ret
+
+
 def _shallow_diff(
     root: str,
     old: Optional["HashInfo"],
     new: Optional["HashInfo"],
     cache: "HashFileDB",
+    check_old_cache: bool = False,
 ) -> Dict[str, List[str]]:
     d = {}
 
@@ -48,7 +101,7 @@ def _shallow_diff(
     if new and new.isdir:
         new_root = os.path.sep.join([root, ""])
 
-    if old and not _in_cache(old, cache):
+    if old and check_old_cache and not _in_cache(old, cache):
         d["not_in_cache"] = [old_root]
 
     if not old and not new:
@@ -67,16 +120,14 @@ def _granular_diff(
     old_obj: Optional["HashFile"],
     new_obj: Optional["HashFile"],
     cache: "HashFileDB",
+    check_old_cache: bool = False,
 ) -> Dict[str, List[str]]:
-    from dvc_data.diff import ROOT
-    from dvc_data.diff import diff as odiff
-
     def path_join(root: str, *paths: str, isdir: bool = False) -> str:
         if not isdir and paths == ROOT:
             return root
         return os.path.sep.join([root, *paths])
 
-    diff_data = odiff(old_obj, new_obj, cache)
+    diff_data = diff_obj(old_obj, new_obj)
 
     output: Dict[str, List[str]] = defaultdict(list)
     for state in ("added", "deleted", "modified", "unchanged"):
@@ -87,7 +138,11 @@ def _granular_diff(
 
             path = path_join(root, *entry.key, isdir=isdir)
             output[state].append(path)
-            if not item.old.in_cache and state != "added":
+            if (
+                check_old_cache
+                and item.old.oid
+                and not _in_cache(item.old.oid, cache)
+            ):
                 output["not_in_cache"].append(path)
     return dict(output)
 
@@ -112,15 +167,16 @@ def _diff(
     new_obj: Optional["HashFile"],
     odb: "HashFileDB",
     granular: bool = False,
+    **kwargs,
 ) -> Dict[str, List[str]]:
     if not granular:
-        return _shallow_diff(root, old_oid, new_oid, odb)
+        return _shallow_diff(root, old_oid, new_oid, odb, **kwargs)
     if (old_oid and not old_obj) or (new_oid and not new_obj):
         # we don't have enough information to give full details
         unknown = _get_obj_items(root, new_obj)
-        shallow_diff = _shallow_diff(root, old_oid, new_oid, odb)
+        shallow_diff = _shallow_diff(root, old_oid, new_oid, odb, **kwargs)
         return {**shallow_diff, "unknown": unknown}
-    return _granular_diff(root, old_obj, new_obj, odb)
+    return _granular_diff(root, old_obj, new_obj, odb, **kwargs)
 
 
 class GitInfo(TypedDict, total=False):
@@ -161,6 +217,7 @@ def _diff_index_to_wtree(repo: "Repo", **kwargs: Any) -> Dict[str, List[str]]:
     from dvc_data.build import build
 
     unstaged_diff = defaultdict(list)
+    index = {}
     for out in repo.index.outs:
         out = cast("Output", out)
         if not out.use_cache:
@@ -181,6 +238,7 @@ def _diff_index_to_wtree(repo: "Repo", **kwargs: Any) -> Dict[str, List[str]]:
         cache = repo.odb.repo
         root = str(out)
         old = out.get_obj()
+        index[root] = (old, out.hash_info)
 
         with ui.status(f"Calculating diff for {root} between index/workspace"):
             d = _diff(
@@ -190,6 +248,7 @@ def _diff_index_to_wtree(repo: "Repo", **kwargs: Any) -> Dict[str, List[str]]:
                 new.hash_info if new else None,
                 new,
                 cache,
+                check_old_cache=True,
                 **kwargs,
             )
 
@@ -197,33 +256,33 @@ def _diff_index_to_wtree(repo: "Repo", **kwargs: Any) -> Dict[str, List[str]]:
             if not items:
                 continue
             unstaged_diff[state].extend(items)
-    return unstaged_diff
+    return unstaged_diff, index
 
 
 def _diff_head_to_index(
-    repo: "Repo", head: str = "HEAD", **kwargs: Any
+    repo: "Repo", index, head: str = "HEAD", **kwargs: Any
 ) -> Dict[str, List[str]]:
     # we need to store objects from index and the HEAD to diff later
-    objs: Dict[str, Dict[str, "HashFile"]] = defaultdict(dict)
     staged_diff = defaultdict(list)
+    head_index = {}
+
     for rev in repo.brancher(revs=[head]):
+        if rev == "workspace":
+            continue
+
         for out in repo.index.outs:
             out = cast("Output", out)
             if not out.use_cache:
                 continue
 
             root = str(out)
-            typ = "index" if rev == "workspace" else head
-            objs[root][typ] = (out.get_obj(), out.hash_info)
+            head_index[root] = (out.get_obj(), out.hash_info)
 
-    cache = repo.odb.repo
-    for root, obj_d in objs.items():
-        old_obj, old_oid = obj_d.get(head, (None, None))
-        new_obj, new_oid = obj_d.get("index", (None, None))
+    for root in head_index.keys() | index.keys():
+        old_obj, old_oid = head_index.get(root, (None, None))
+        new_obj, new_oid = index.get(root, (None, None))
         with ui.status(f"Calculating diff for {root} between head/index"):
-            d = _diff(
-                root, old_oid, old_obj, new_oid, new_obj, cache, **kwargs
-            )
+            d = _diff(root, old_oid, old_obj, new_oid, new_obj, None, **kwargs)
 
         for state, items in d.items():
             if not items:
@@ -267,12 +326,12 @@ def status(repo: "Repo", untracked_files: str = "no", **kwargs: Any) -> Status:
     from dvc.scm import NoSCMError
 
     head = kwargs.pop("head", "HEAD")
-    uncommitted_diff = _diff_index_to_wtree(repo, **kwargs)
+    uncommitted_diff, index = _diff_index_to_wtree(repo, **kwargs)
     not_in_cache = uncommitted_diff.pop("not_in_cache", [])
     unchanged = set(uncommitted_diff.pop("unchanged", []))
 
     try:
-        committed_diff = _diff_head_to_index(repo, head=head, **kwargs)
+        committed_diff = _diff_head_to_index(repo, index, head=head, **kwargs)
     except (SCMError, NoSCMError):
         committed_diff = {}
     else:
