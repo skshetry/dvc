@@ -153,10 +153,12 @@ def to_pipeline_file(stage: "PipelineStage"):
 
 
 def to_single_stage_lockfile(stage: "Stage", **kwargs) -> dict:
+    from dvc.output import split_file_meta_from_cloud
+
     assert stage.cmd
 
     def _dumpd(item):
-        meta_d = item.meta.to_dict()
+        meta_d = split_file_meta_from_cloud(item.meta.to_dict())
         meta_d.pop("isdir", None)
         ret = [
             (item.PARAM_PATH, item.def_path),
@@ -169,7 +171,13 @@ def to_single_stage_lockfile(stage: "Stage", **kwargs) -> dict:
                 obj = item.obj
             else:
                 obj = item.get_obj()
-            ret.append((item.PARAM_FILES, obj.as_list(with_meta=True)))
+            files = obj.as_list(with_meta=True)
+            ret.append(
+                (
+                    item.PARAM_FILES,
+                    [split_file_meta_from_cloud(f) for f in files],
+                )
+            )
 
         return OrderedDict(ret)
 
