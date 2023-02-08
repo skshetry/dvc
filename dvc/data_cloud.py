@@ -64,6 +64,7 @@ class DataCloud:
 
             cls, config, fs_path = get_cloud_fs(self.repo, name=name)
 
+            config["endpointurl"] = "http://localhost:9000"
             if config.get("worktree"):
                 version_aware = config.get("version_aware")
                 if version_aware is False:

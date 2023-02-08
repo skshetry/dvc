@@ -1,0 +1,4 @@
+stages:
+    train:
+      cmd: echo "hello"
+
