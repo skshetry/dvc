@@ -1,0 +1,8 @@
+schema: '2.0'
+stages:
+  stage1:
+    cmd: echo foo > foo
+    outs:
+    - path: foo
+      md5: d3b07384d113edec49eaa6238ad5ff00
+      size: 4
