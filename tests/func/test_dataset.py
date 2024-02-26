@@ -9,15 +9,16 @@ from dvc.dependency.base import Dependency
 from dvc.exceptions import ReproductionError
 from dvc.repo.datasets import (
     DatasetNotFoundError,
-    DatasetSpec,
     DVCDataset,
     DVCDatasetLock,
     DVCDatasetSpec,
     DVCXDataset,
     DVCXDatasetLock,
+    DVCXDatasetSpec,
     FileInfo,
     URLDataset,
     URLDatasetLock,
+    URLDatasetSpec,
 )
 from dvc_data.hashfile.meta import Meta
 from dvc_data.index import HashInfo, Tree
@@ -51,13 +52,10 @@ def test_dvc(tmp_dir, scm, dvc: "Repo"):
     dataset = datasets.add(tmp_dir.fs_path, name="mydataset", path="file")
     expected = DVCDataset(
         manifest_path=(tmp_dir / "dvc.yaml").fs_path,
-        spec=DVCDatasetSpec(
-            name="mydataset", url=tmp_dir.fs_path, type="dvc", path="file"
-        ),
+        spec=DVCDatasetSpec(name="mydataset", url=tmp_dir.fs_path, path="file"),
         lock=DVCDatasetLock(
             name="mydataset",
             url=tmp_dir.fs_path,
-            type="dvc",
             path="file",
             rev_lock=scm.get_rev(),
         ),
@@ -87,11 +85,10 @@ def test_dvcx(tmp_dir, dvc, mocker):
     dataset = datasets.add(url="dvcx://dataset", name="mydataset")
     expected = DVCXDataset(
         manifest_path=(tmp_dir / "dvc.yaml").fs_path,
-        spec=DatasetSpec(name="mydataset", url="dvcx://dataset", type="dvcx"),
+        spec=DVCXDatasetSpec(name="mydataset", url="dvcx://dataset"),
         lock=DVCXDatasetLock(
             name="mydataset",
             url="dvcx://dataset",
-            type="dvcx",
             version=1,
             created_at=version_info[0].created_at,
         ),
@@ -128,11 +125,10 @@ def test_url(tmp_dir, dvc, mocker):
     dataset = datasets.add(url="s3://dataset", name="mydataset")
     expected = URLDataset(
         manifest_path=(tmp_dir / "dvc.yaml").fs_path,
-        spec=DatasetSpec(name="mydataset", url="s3://dataset", type="url"),
+        spec=URLDatasetSpec(name="mydataset", url="s3://dataset"),
         lock=URLDatasetLock(
             name="mydataset",
             url="s3://dataset",
-            type="url",
             meta=Meta(isdir=True),
             files=[FileInfo(relpath="foo", meta=Meta(version_id="1"))],
         ),
@@ -162,7 +158,7 @@ def test_url(tmp_dir, dvc, mocker):
 def test_dvc_dump(tmp_dir, dvc):
     manifest_path = os.path.join(tmp_dir, "dvc.yaml")
     spec = DVCDatasetSpec(
-        name="mydataset", url=tmp_dir.fs_path, type="dvc", path="path", rev="main"
+        name="mydataset", url=tmp_dir.fs_path, path="path", rev="main"
     )
     lock = DVCDatasetLock(rev_lock="0" * 40, **spec.to_dict())
     dataset = DVCDataset(manifest_path=manifest_path, spec=spec, lock=lock)
@@ -191,7 +187,7 @@ def test_dvc_dump(tmp_dir, dvc):
 
 def test_dvcx_dump(tmp_dir, dvc):
     manifest_path = os.path.join(tmp_dir, "dvc.yaml")
-    spec = DatasetSpec(name="mydataset", url="dvcx://dataset", type="dvcx")
+    spec = DVCXDatasetSpec(name="mydataset", url="dvcx://dataset")
     dt = datetime.now(tz=timezone.utc)
     lock = DVCXDatasetLock(version=1, created_at=dt, **spec.to_dict())
     dataset = DVCXDataset(manifest_path=manifest_path, spec=spec, lock=lock)
@@ -214,7 +210,7 @@ def test_dvcx_dump(tmp_dir, dvc):
 
 def test_url_dump(tmp_dir, dvc):
     manifest_path = os.path.join(tmp_dir, "dvc.yaml")
-    spec = DatasetSpec(name="mydataset", url="s3://dataset", type="url")
+    spec = URLDatasetSpec(name="mydataset", url="s3://dataset")
     files = [FileInfo(relpath="foo", meta=Meta(version_id="1"))]
     lock = URLDatasetLock(meta=Meta(isdir=True), files=files, **spec.to_dict())
     dataset = URLDataset(manifest_path=manifest_path, spec=spec, lock=lock)
@@ -243,11 +239,10 @@ def test_url_dump(tmp_dir, dvc):
 
 def test_invalidation(tmp_dir, dvc):
     manifest_path = os.path.join(tmp_dir, "dvc.yaml")
-    spec = DatasetSpec(name="mydataset", url="url1", type="url")
+    spec = URLDatasetSpec(name="mydataset", url="url1")
     lock = DVCXDatasetLock(
         name="mydataset",
         url="dvcx://dataset",
-        type="dvcx",
         version=1,
         created_at=datetime.now(tz=timezone.utc),
     )
@@ -359,11 +354,10 @@ def test_url_dataset_pipeline(mocker, tmp_dir, dvc):
 
 def test_pipeline_when_not_in_sync(tmp_dir, dvc):
     manifest_path = os.path.join(tmp_dir, "dvc.yaml")
-    spec = DatasetSpec(name="mydataset", url="url1", type="url")
+    spec = URLDatasetSpec(name="mydataset", url="url1")
     lock = DVCXDatasetLock(
         name="mydataset",
         url="dvcx://dataset",
-        type="dvcx",
         version=1,
         created_at=datetime.now(tz=timezone.utc),
     )
@@ -382,16 +376,14 @@ def test_pipeline_when_not_in_sync(tmp_dir, dvc):
 def test_collect(tmp_dir, dvc):
     manifest_path1 = os.path.join(tmp_dir, "dvc.yaml")
     dt = datetime.now(tz=timezone.utc)
-    spec = DatasetSpec(name="mydataset1", url="url1", type="dvcx")
+    spec = DVCXDatasetSpec(name="mydataset1", url="url1")
     lock = DVCXDatasetLock(version=1, created_at=dt, **spec.to_dict())
     mydataset1 = DVCXDataset(manifest_path=manifest_path1, spec=spec, lock=lock)
     dvc.datasets.dump(mydataset1)
 
     (tmp_dir / "sub").mkdir()
     manifest_path2 = os.path.join(tmp_dir, "sub", "dvc.yaml")
-    spec = DVCDatasetSpec(
-        name="mydataset2", url=tmp_dir.fs_path, type="dvc", path="path"
-    )
+    spec = DVCDatasetSpec(name="mydataset2", url=tmp_dir.fs_path, path="path")
     lock = DVCDatasetLock(rev_lock="0" * 40, **spec.to_dict())
     mydataset2 = DVCDataset(manifest_path=manifest_path2, spec=spec, lock=lock)
     dvc.datasets.dump(mydataset2)

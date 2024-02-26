@@ -88,11 +88,11 @@ def ensure(cls):
 class SerDe:
     def to_dict(self: AttrsInstance) -> dict[str, Any]:
         def filter_defaults(attr: Attribute, v: Any):
-            if attr.metadata.get("exclude_falsy", False) and not v:
-                return False
-            return attr.default != v
+            return not (attr.metadata.get("exclude_falsy", False) and not v)
 
         def value_serializer(_inst, _field, v):
+            if isinstance(v, Meta):
+                return v.to_dict()
             return v.isoformat() if isinstance(v, datetime) else v
 
         return asdict(self, filter=filter_defaults, value_serializer=value_serializer)
@@ -105,17 +105,28 @@ class SerDe:
 
 
 @frozen(kw_only=True)
-class DatasetSpec(SerDe):
+class URLDatasetSpec(SerDe):
     name: str
     url: str
-    type: Literal["dvc", "dvcx", "url"]
+    type: Literal["url"] = "url"
 
 
 @frozen(kw_only=True)
-class DVCDatasetSpec(DatasetSpec):
-    type: Literal["dvc"]
-    path: str = field(default="", converter=default_str)
-    rev: Optional[str] = None
+class DVCDatasetSpec(SerDe):
+    name: str
+    url: str
+    type: Literal["dvc"] = "dvc"
+    path: str = field(
+        default="", converter=default_str, metadata={"exclude_falsy": True}
+    )
+    rev: Optional[str] = field(default=None, metadata={"exclude_falsy": True})
+
+
+@frozen(kw_only=True)
+class DVCXDatasetSpec(SerDe):
+    name: str
+    url: str
+    type: Literal["dvcx"] = "dvcx"
 
 
 @frozen(kw_only=True, order=True)
@@ -130,13 +141,13 @@ class DVCDatasetLock(DVCDatasetSpec):
 
 
 @frozen(kw_only=True)
-class DVCXDatasetLock(DatasetSpec):
+class DVCXDatasetLock(DVCXDatasetSpec):
     version: int
     created_at: datetime = field(converter=to_datetime)
 
 
 @frozen(kw_only=True)
-class URLDatasetLock(DatasetSpec):
+class URLDatasetLock(URLDatasetSpec):
     meta: Meta = field(converter=ensure(Meta))  # type: ignore[misc]
     files: list[FileInfo] = field(
         factory=list,
@@ -146,7 +157,8 @@ class URLDatasetLock(DatasetSpec):
 
 
 def to_spec(lock: "Lock") -> "Spec":
-    cls = DVCDatasetSpec if lock.type == "dvc" else DatasetSpec
+    kl = {"dvc": DVCDatasetSpec, "dvcx": DVCXDatasetSpec, "url": URLDatasetSpec}
+    cls = kl[lock.type]
     return cls(**{f.name: getattr(lock, f.name) for f in fields(cls)})
 
 
@@ -184,7 +196,7 @@ class DVCDataset:
 @frozen(kw_only=True)
 class DVCXDataset:
     manifest_path: str
-    spec: "DatasetSpec"
+    spec: "DVCXDatasetSpec"
     lock: "Optional[DVCXDatasetLock]" = field(default=None)
     _invalidated: bool = field(default=False, eq=False, repr=False)
 
@@ -221,7 +233,7 @@ class DVCXDataset:
 @frozen(kw_only=True)
 class URLDataset:
     manifest_path: str
-    spec: "DatasetSpec"
+    spec: "URLDatasetSpec"
     lock: "Optional[URLDatasetLock]" = None
     _invalidated: bool = field(default=False, eq=False, repr=False)
 
@@ -244,7 +256,7 @@ class URLDataset:
 
 
 Lock = Union[DVCDatasetLock, DVCXDatasetLock, URLDatasetLock]
-Spec = Union[DatasetSpec, DVCDatasetSpec]
+Spec = Union[DVCDatasetSpec, DVCXDatasetSpec, URLDatasetSpec]
 Dataset = Union[DVCDataset, DVCXDataset, URLDataset]
 
 
@@ -322,10 +334,10 @@ class Datasets(Mapping[str, Dataset]):
         typ = spec.get("type")
         if not typ:
             raise ValueError("type should be present in spec")
-        if typ == "dvc":
-            return DVCDatasetSpec.from_dict(spec)
-        if typ in {"dvcx", "url"}:
-            return DatasetSpec.from_dict(spec)
+
+        kl = {"dvc": DVCDatasetSpec, "dvcx": DVCXDatasetSpec, "url": URLDatasetSpec}
+        if cls := kl.get(typ):
+            return cls.from_dict(spec)  # type: ignore[attr-defined]
         raise ValueError(f"unknown dataset type: {spec.get('type', '')}")
 
     @staticmethod
@@ -355,7 +367,6 @@ class Datasets(Mapping[str, Dataset]):
             _invalidated = True  # signal is used during `dvc repro`/`dvc status`.
             lock = None
 
-        assert isinstance(spec, DatasetSpec)
         if spec.type == "dvc":
             assert lock is None or isinstance(lock, DVCDatasetLock)
             assert isinstance(spec, DVCDatasetSpec)
@@ -367,6 +378,7 @@ class Datasets(Mapping[str, Dataset]):
             )
         if spec.type == "url":
             assert lock is None or isinstance(lock, URLDatasetLock)
+            assert isinstance(spec, URLDatasetSpec)
             return URLDataset(
                 manifest_path=manifest_path,
                 spec=spec,
@@ -375,6 +387,7 @@ class Datasets(Mapping[str, Dataset]):
             )
         if spec.type == "dvcx":
             assert lock is None or isinstance(lock, DVCXDatasetLock)
+            assert isinstance(spec, DVCXDatasetSpec)
             return DVCXDataset(
                 manifest_path=manifest_path,
                 spec=spec,
