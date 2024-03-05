@@ -1,0 +1,4 @@
+[core]
+    remote = local
+['remote "local"']
+    url = /var/folders/xh/trg29z296h70n109kwfk6g800000gn/T/tmp.xLBamxSNjh
