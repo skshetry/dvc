@@ -10,9 +10,10 @@ from enum import IntEnum
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Union
 
+from dvc_studio_client.env import STUDIO_REPO_URL
 from scmrepo.exceptions import SCMError
 
-from dvc.env import DVC_EXP_AUTO_PUSH, DVC_EXP_GIT_REMOTE
+from dvc.env import DVC_EXP_AUTO_PUSH, DVC_EXP_GIT_REMOTE, DVC_STUDIO_REPO_URL
 from dvc.exceptions import DvcException
 from dvc.log import logger
 from dvc.repo.experiments.exceptions import ExperimentExistsError
@@ -20,6 +21,7 @@ from dvc.repo.experiments.refs import EXEC_BASELINE, EXEC_BRANCH, ExpRefInfo
 from dvc.repo.experiments.utils import to_studio_params
 from dvc.repo.metrics.show import _collect_top_level_metrics
 from dvc.repo.params.show import _collect_top_level_params
+from dvc.scm import InvalidRemoteSCMRepo
 from dvc.stage.serialize import to_lockfile
 from dvc.utils import dict_sha256, env2bool, relpath
 from dvc.utils.fs import remove
@@ -670,16 +672,38 @@ class BaseExecutor(ABC):
     def auto_push(cls, dvc: "Repo") -> Iterator[None]:
         exp_config = dvc.config.get("exp", {})
         auto_push = env2bool(DVC_EXP_AUTO_PUSH, exp_config.get("auto_push", False))
-        if not auto_push:
-            yield
-            return
 
-        git_remote = os.getenv(
-            DVC_EXP_GIT_REMOTE, exp_config.get("git_remote", "origin")
+        git_remote = os.getenv(DVC_EXP_GIT_REMOTE, exp_config.get("git_remote"))
+        studio_config = dvc.config.get("studio", {})
+        git_remote_url = (
+            git_remote
+            or os.getenv(DVC_STUDIO_REPO_URL)
+            or os.getenv(STUDIO_REPO_URL)
+            or studio_config.get("repo_url")
         )
-        cls._validate_remotes(dvc, git_remote)
+
+        if git_remote_url is None:
+            from dulwich.porcelain import get_remote_repo
+
+            dulwich_repo = dvc.scm.dulwich.repo
+            try:
+                _remote, git_remote_url = get_remote_repo(dulwich_repo)
+            except IndexError:
+                # IndexError happens when the head is detached
+                _remote, git_remote_url = get_remote_repo(dulwich_repo, b"origin")
+            # Dulwich returns (None, "origin") if no remote set
+            # if (_remote, git_remote_url) == (None, "origin"):
+
+        if auto_push and git_remote_url:
+            try:
+                cls._validate_remotes(dvc, git_remote_url)
+            except InvalidRemoteSCMRepo:
+                logger.warning("Skipping auto push", exc_info=True)
+                auto_push = False
+
         yield
-        cls._auto_push(dvc, git_remote)
+        if auto_push and git_remote_url:
+            cls._auto_push(dvc, git_remote_url)
 
     @staticmethod
     def _auto_push(
