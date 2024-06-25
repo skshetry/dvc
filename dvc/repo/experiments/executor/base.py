@@ -483,6 +483,7 @@ class BaseExecutor(ABC):
             message=message,
             **kwargs,
         ) as dvc:
+            print(dvc.scm.active_branch())
             args, kwargs = cls._repro_args(dvc)
             if args:
                 targets: Optional[Union[list, str]] = args[0]
@@ -670,6 +671,7 @@ class BaseExecutor(ABC):
     def auto_push(cls, dvc: "Repo") -> Iterator[None]:
         exp_config = dvc.config.get("exp", {})
         auto_push = env2bool(DVC_EXP_AUTO_PUSH, exp_config.get("auto_push", False))
+
         if not auto_push:
             yield
             return

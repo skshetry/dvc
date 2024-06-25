@@ -52,6 +52,7 @@ class WorkspaceQueue(BaseStashQueue):
             stash_entry.name,
             stash_entry.head_rev,
         )
+        breakpoint()
         executor = self.init_executor(self.repo.experiments, entry)
         return QueueGetResult(entry, executor)
 
@@ -88,7 +89,9 @@ class WorkspaceQueue(BaseStashQueue):
         results: dict[str, dict[str, str]] = defaultdict(dict)
         try:
             while True:
+                print(self.repo.scm.active_branch())
                 entry, executor = self.get()
+                print(self.repo.scm.active_branch())
                 results.update(
                     self._reproduce_entry(
                         entry, executor, copy_paths=copy_paths, message=message

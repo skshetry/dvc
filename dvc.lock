@@ -1,0 +1,4 @@
+schema: '2.0'
+stages:
+  test2:
+    cmd: echo foo

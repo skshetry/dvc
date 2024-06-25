@@ -1,0 +1,3 @@
+stages:
+  test2:
+    cmd: echo foo
