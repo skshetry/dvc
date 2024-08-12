@@ -348,6 +348,7 @@ class Output:
             **fs_kwargs,
         )
         self.fs = fs_cls(**fs_config)
+        self._checksum_jobs = self.fs.hash_jobs
 
         if (
             self.fs.protocol == "local"
@@ -543,6 +544,7 @@ class Output:
             disable=no_progress_bar,
         ) as pb:
             kwargs["callback"] = pb.as_callback()
+            kwargs.setdefault("checksum_jobs", self._checksum_jobs)
             return build(*args, **kwargs)
 
     def _get_hash_meta(self):
@@ -731,6 +733,7 @@ class Output:
         from dvc_data.hashfile.checkout import LinkError, PromptError
 
         kwargs.setdefault("ignore", self.dvcignore)
+        kwargs.setdefault("checksum_jobs", self._checksum_jobs)
         try:
             return checkout(*args, **kwargs)
         except PromptError as exc:

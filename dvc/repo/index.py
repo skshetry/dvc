@@ -873,6 +873,7 @@ def build_data_index(  # noqa: C901, PLR0912
             state=index.repo.state,
             ignore=ignore,
             hash_name=hash_name,
+            checksum_jobs=fs.hash_jobs,
         ):
             if not entry.key or entry.key == ("",):
                 # NOTE: whether the root will be returned by build_entries
