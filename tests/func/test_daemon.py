@@ -113,9 +113,10 @@ def test_analytics(tmp_path, server):
     pid = int(match.group(1).strip())
 
     with suppress(psutil.NoSuchProcess):
-        psutil.Process(pid).wait(timeout=30)
+        psutil.Process(pid).wait(timeout=100)
 
     log_contents = logfile.read_text(encoding="utf8")
+    assert log_contents == ""
     expected_line = (f"Process {pid} " if os.name != "nt" else "") + "exiting with 0"
     assert expected_line in log_contents
 

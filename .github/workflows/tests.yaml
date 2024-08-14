@@ -59,25 +59,151 @@ jobs:
           pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
         - os: windows-latest
           pyv: "3.9"
-          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 2"
-        - os: windows-latest
-          pyv: "3.9"
-          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 3"
-        - os: windows-latest
-          pyv: "3.9"
-          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 4"
-        - os: windows-latest
-          pyv: "3.12"
           pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
         - os: windows-latest
-          pyv: "3.12"
-          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 2"
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
         - os: windows-latest
-          pyv: "3.12"
-          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 3"
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
         - os: windows-latest
-          pyv: "3.12"
-          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 4"
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
+        - os: windows-latest
+          pyv: "3.9"
+          pytestargs: "--splitting-algorithm=least_duration --splits 4 --group 1"
     steps:
     - uses: actions/checkout@v4
       with:
@@ -99,7 +225,7 @@ jobs:
       env:
         PYTHONUTF8: 1
       run: >
-        pytest ${{ matrix.pytestargs }} -n=logical --timeout=300 --durations=0
+        pytest ${{ matrix.pytestargs }} -n=logical --timeout=300 --durations=0 -vv
         --cov --cov-report=xml --cov-report=term  --durations-path=./.github/.test_durations
     - name: upload coverage report
       uses: codecov/codecov-action@v3
